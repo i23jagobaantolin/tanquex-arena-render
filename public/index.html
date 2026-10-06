@@ -1,0 +1,1480 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Tank Wars</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Russo+One&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* Layout: escena 3D a pantalla completa. Capa 2D para nombres y barras de vida, HUD en los bordes, pantallas de inicio y de muerte encima. Un solo look a propósito: arena clara, paneles oscuros. */
+:root {
+  color-scheme: light;
+  --sky: #c9d3e0;
+  --ink: #141a2e;
+  --panel: rgba(16, 23, 42, .84);
+  --line: rgba(255, 255, 255, .14);
+  --text: #f1f5ff;
+  --muted: #9fb0d0;
+  --accent: #2f8cff;
+  --hot: #ff5d6c;
+  --gold: #ffc23d;
+  --font-display: 'Russo One', 'Arial Black', Impact, sans-serif;
+  --font-ui: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--sky); color: var(--text);
+  font-family: var(--font-ui); font-weight: 600; font-size: 16px;
+  overflow: hidden; -webkit-user-select: none; user-select: none;
+}
+#app { position: relative; width: 100%; height: 100%; overflow: hidden; }
+#gl, #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#gl { touch-action: none; cursor: crosshair; }
+#ov { pointer-events: none; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 24px rgba(10, 16, 34, .25); }
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hud > * { position: absolute; pointer-events: auto; }
+#hud[hidden] { display: none; }
+
+#help { top: 12px; left: 16px; padding: 8px 12px; font-size: 14px; line-height: 1.35; color: var(--muted); pointer-events: none; }
+#help b { color: var(--text); font-weight: 700; }
+
+#board { top: 12px; right: 16px; width: min(210px, 44vw); padding: 8px 12px 10px; pointer-events: none; background: rgba(16,23,42,.42); border-color: rgba(255,255,255,.12); box-shadow: 0 4px 14px rgba(10,16,34,.14); backdrop-filter: blur(3px); }
+#board h3 { margin: 0 0 4px; font: 700 13px var(--font-ui); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+#boardList { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+#boardList li { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; line-height: 1.25; }
+#boardList li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#boardList li span:last-child { font-variant-numeric: tabular-nums; color: var(--muted); }
+#boardList li.me { color: var(--gold); }
+#boardList li.me span:last-child { color: var(--gold); }
+
+#classBox { top: 76px; left: 12px; padding: 7px 9px 9px; max-width: min(360px, calc(100% - 24px)); max-height: 42vh; overflow: auto; }
+#classBox h3 { margin: 0 0 5px; font: 700 12px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+#classBtns { display: flex; flex-wrap: wrap; gap: 5px; }
+.cbtn { font: 700 14px var(--font-ui); color: var(--text); background: #25314f; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; cursor: pointer; }
+.cbtn { display: grid; gap: 1px; text-align: left; }
+.cbtn small { font: 600 10px var(--font-ui); color: var(--muted); max-width: 125px; line-height: 1.1; }
+.cbtn:hover { background: var(--accent); }
+.cbtn:hover small { color: #e6efff; }
+
+#stats { left: 10px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); width: min(166px, 46vw); padding: 5px 6px 6px; transition: opacity .2s; }
+#stats.idle { opacity: .6; }
+#stats .hdr { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+#stats .hdr b { font: 400 14px var(--font-display); color: var(--gold); letter-spacing: 0; }
+#statRows { display: grid; gap: 2px; }
+.stat { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 4px; text-align: left; font: 600 12px var(--font-ui); color: var(--text); background: rgba(255, 255, 255, .06); border: 0; border-radius: 5px; padding: 2px 4px; cursor: pointer; min-width: 0; }
+.stat:disabled { cursor: default; opacity: .75; }
+.stat:not(:disabled):hover { background: rgba(255, 255, 255, .16); }
+.stat .k { color: var(--muted); font-size: 12px; }
+.stat .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pips { display: flex; gap: 2px; }
+.pips i { width: 5px; height: 8px; border-radius: 2px; background: rgba(255, 255, 255, .16); }
+
+#mini { right: 16px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); width: 112px; height: 112px; border-radius: 12px; background: rgba(13,22,40,.76); border: 1px solid rgba(150,190,230,.42); box-shadow: 0 5px 18px rgba(10,16,34,.24); pointer-events: none; }
+
+#xp { left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(440px, calc(100% - 32px)); pointer-events: none; }
+#xp .top { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 3px; text-shadow: 0 1px 3px rgba(10, 16, 34, .55); }
+#pName { font: 400 18px var(--font-display); }
+#pScore { font-size: 17px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.bar { position: relative; height: 24px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; }
+#xpFill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #ffb02e, #ffd84a); }
+#xpLabel { position: absolute; inset: 0; display: grid; place-items: center; font-size: 14px; letter-spacing: .06em; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+
+#feed { top: 72px; left: 50%; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; pointer-events: none; width: max-content; max-width: calc(100% - 32px); }
+#feed div { font: 400 18px var(--font-display); color: #fff; text-shadow: 0 2px 0 var(--ink), 0 0 6px rgba(0, 0, 0, .35); animation: fade 3.6s forwards; text-align: center; }
+@keyframes fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
+
+.screen { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(201, 211, 224, .35); backdrop-filter: blur(5px); z-index: 5; }
+.screen[hidden] { display: none; }
+.card { width: min(350px, 100%); padding: 18px 16px 16px; text-align: center; }
+.card h1 { margin: 0 0 4px; font: 400 clamp(29px, 8vw, 38px) var(--font-display); letter-spacing: .02em; line-height: 1; text-wrap: balance; }
+.card h1 span { color: var(--accent); }
+.card p { margin: 5px 0 11px; color: var(--muted); font-size: 15px; line-height: 1.25; }
+.card input { width: 100%; box-sizing: border-box; font: 700 20px var(--font-ui); text-align: center; color: var(--text); background: #0d1326; border: 2px solid #34415f; border-radius: 10px; padding: 11px 12px; outline: none; }
+.card input:focus-visible { border-color: var(--accent); }
+.play { margin-top: 9px; width: 100%; font: 400 19px var(--font-display); color: #fff; background: var(--accent); border: 0; border-radius: 10px; padding: 10px 13px; cursor: pointer; box-shadow: 0 5px 0 #1a56a8; }
+.play:active { transform: translateY(4px); box-shadow: 0 1px 0 #1a56a8; }
+.play:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.fine { margin: 10px 0 0 !important; font-size: 12px !important; }
+.fine b { color: var(--text); font-weight: 700; }
+.kv { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 14px 0 6px; }
+.kv div { background: rgba(255, 255, 255, .07); border-radius: 10px; padding: 8px; }
+.kv small { display: block; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.kv b { font: 400 24px var(--font-display); color: var(--text); font-variant-numeric: tabular-nums; }
+.dtitle { font: 400 15px var(--font-ui); letter-spacing: .14em; text-transform: uppercase; color: var(--hot); }
+
+@media (max-width: 640px) {
+  #help { display: none; }
+  #classBox { top: 64px; }
+  .stat { font-size: 11px; padding: 2px 4px; }
+  .pips i { width: 4px; height: 7px; }
+  #mini { width: 92px; height: 92px; }
+  #stats { width: min(156px, 47vw); }
+}
+@media (prefers-reduced-motion: reduce) { #feed div { animation-duration: 3.6s; } }
+#autoShotBtn { right: 16px; bottom: calc(194px + env(safe-area-inset-bottom, 0px)); padding: 7px 10px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font: 700 13px var(--font-ui); letter-spacing: .04em; cursor: pointer; box-shadow: 0 4px 14px rgba(10,16,34,.2); }
+#autoShotBtn.active { color: #fff; background: #1c8c5a; border-color: rgba(255,255,255,.3); }
+#autoShotBtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+#camModeBtn { display: none; padding: 7px 10px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font: 700 13px var(--font-ui); cursor: pointer; }
+#camModeBtn.active { background: #285f93; border-color: rgba(255,255,255,.35); }
+#camModeBtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (max-width: 640px) { #camModeBtn { display: block; top: 12px; left: 12px; } }
+@media (max-width: 640px) { #autoShotBtn { right: 12px; bottom: calc(170px + env(safe-area-inset-bottom, 0px)); } }
+#gemPanel { left:10px; bottom:calc(246px + env(safe-area-inset-bottom,0px)); display:flex; align-items:center; gap:9px; padding:6px 8px; color:#fff; font:700 13px var(--font-ui); }
+#gemPanel > span { color:#ffe17b; white-space:nowrap; }
+#gemPanel b { color:#fff; font:400 15px var(--font-display); }
+#tankIndexBtn { border:1px solid rgba(120,205,255,.42); border-radius:7px; padding:5px 7px; background:#2b4565; color:#fff; font:700 12px var(--font-ui); cursor:pointer; }
+#tankIndexBtn:hover { background:#356b85; }
+#chestBtn { border:1px solid rgba(255,223,130,.45); border-radius:7px; padding:5px 8px; background:#384767; color:#fff; font:700 12px var(--font-ui); cursor:pointer; }
+#chestBtn:hover { background:#87612a; }
+@media (max-width:640px) { #gemPanel { left:8px; bottom:calc(246px + env(safe-area-inset-bottom,0px)); gap:6px; padding:5px 6px; font-size:12px; } #chestBtn { padding:4px 6px; } }
+#rouletteBtn { right: 16px; bottom: calc(230px + env(safe-area-inset-bottom, 0px)); padding: 8px 11px; color: #171225; background: linear-gradient(135deg,#ffe17b,#ff9e42); border: 1px solid rgba(255,255,255,.7); border-radius: 9px; font: 700 14px var(--font-ui); letter-spacing: .04em; cursor: pointer; box-shadow: 0 4px 16px rgba(10,16,34,.28); animation: rouletteGlow 1.8s ease-in-out infinite alternate; }
+#rouletteBtn[hidden] { display:none; }
+@keyframes rouletteGlow { to { box-shadow: 0 0 20px rgba(255,194,61,.65); } }
+.roulette-menu { margin-top:10px; width:100%; padding:10px 12px; border:1px solid rgba(255,255,255,.58); border-radius:10px; color:#24192c; background:linear-gradient(110deg,#ffe17b,#ff9e42); font:400 17px var(--font-display); cursor:pointer; box-shadow:0 4px 0 #a95b26,0 5px 16px rgba(255,194,61,.2); }
+.roulette-menu:hover:not(:disabled) { filter:brightness(1.08); transform:translateY(-1px); }
+.tank-index-menu { margin-top:8px; width:100%; padding:8px 12px; border:1px solid rgba(130,190,255,.35); border-radius:9px; color:#eaf4ff; background:#263653; font:700 15px var(--font-ui); cursor:pointer; }
+.tank-index-menu:hover { background:#38547c; }
+.roulette-menu:disabled { cursor:default; opacity:.72; box-shadow:none; }
+.roulette-status { margin-top:6px !important; }
+.roulette-screen { position:absolute; inset:0; z-index:10; display:grid; place-items:center; padding:14px; background:rgba(8,13,29,.72); backdrop-filter:blur(7px); }
+.roulette-screen[hidden] { display:none; }
+.roulette-card { position:relative; width:min(390px,100%); padding:22px 18px 18px; text-align:center; background:linear-gradient(160deg,rgba(25,35,62,.98),rgba(10,16,34,.98)); border-color:rgba(255,210,100,.35); }
+.roulette-close { position:absolute; top:8px; right:11px; color:#dce7ff; background:transparent; border:0; font:400 28px system-ui; cursor:pointer; }
+.roulette-kicker { margin:0 0 3px; color:#ffc23d; font:700 12px var(--font-ui); letter-spacing:.18em; }
+.roulette-card h2 { margin:0; color:#fff; font:400 clamp(25px,7vw,32px) var(--font-display); }
+.roulette-copy { margin:5px 0 12px; color:var(--muted); font-size:14px; }
+.wheel-wrap { position:relative; width:min(270px,72vw); aspect-ratio:1; margin:0 auto 10px; }
+.wheel { position:absolute; inset:0; border:7px solid #ffe39b; border-radius:50%; background:conic-gradient(#ffbf45 0deg 45deg,#354b77 45deg 90deg,#ff6b7c 90deg 135deg,#354b77 135deg 180deg,#54c6bd 180deg 225deg,#354b77 225deg 270deg,#9b79ff 270deg 315deg,#354b77 315deg 360deg); box-shadow:0 0 0 4px rgba(255,255,255,.12),0 8px 26px rgba(0,0,0,.4); transition:transform 4.5s cubic-bezier(.12,.72,.08,1); }
+.wheel::after { content:""; position:absolute; inset:42%; border-radius:50%; background:#17213b; border:3px solid #ffe39b; box-shadow:0 0 12px rgba(0,0,0,.3); }
+.wheel-label { position:absolute; z-index:1; width:70px; color:#fff; font:700 10px/1.05 var(--font-ui); text-shadow:0 1px 3px #10172a; text-align:center; }
+.wheel-pointer { position:absolute; z-index:2; top:-4px; left:50%; transform:translateX(-50%); width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-top:27px solid #fff; filter:drop-shadow(0 2px 3px #131a2e); }
+.roulette-result { min-height:25px; margin:8px 0 2px; color:#ffe28a; font:400 17px var(--font-display); }
+#spinBtn { margin-top:7px; }
+@media (max-width:640px) { #rouletteBtn { right:12px; bottom:calc(205px + env(safe-area-inset-bottom,0px)); } .roulette-card { padding:20px 14px 15px; } }
+.chest-screen { position:absolute; inset:0; z-index:11; display:grid; place-items:center; padding:14px; background:rgba(8,13,29,.76); backdrop-filter:blur(7px); }
+.chest-screen[hidden] { display:none; }
+.chest-card { position:relative; width:min(440px,100%); max-height:calc(100% - 20px); overflow:auto; padding:22px 18px 18px; text-align:center; background:linear-gradient(160deg,rgba(25,35,62,.98),rgba(10,16,34,.98)); border-color:rgba(92,232,219,.35); }
+.chest-card h2 { margin:0; color:#fff; font:400 clamp(25px,7vw,32px) var(--font-display); }
+.chest-wallet { display:inline-block; margin:6px 0 10px; padding:6px 12px; border-radius:999px; background:rgba(77,223,210,.12); color:#9cf8ed; }
+.chest-wallet b { color:#fff; font:400 20px var(--font-display); }
+.chest-choices { display:grid; gap:8px; }
+.chest-option { padding:10px 12px; border:1px solid rgba(255,255,255,.14); border-radius:10px; color:#f1f5ff; background:#263451; text-align:left; white-space:pre-line; font:600 14px/1.25 var(--font-ui); cursor:pointer; }
+.chest-option strong { color:#ffe17b; font:700 16px var(--font-ui); }
+.chest-option:hover:not(:disabled) { border-color:#65e2d1; background:#31466a; }
+.chest-option:disabled { opacity:.58; cursor:default; }
+.chest-result { min-height:25px; margin-top:10px; color:#a8fff1; font:400 15px var(--font-display); }
+.tank-index-screen { position:absolute; inset:0; z-index:12; display:grid; place-items:center; padding:14px; background:rgba(8,13,29,.8); backdrop-filter:blur(7px); }
+.tank-index-screen[hidden] { display:none; }
+.tank-index-card { position:relative; width:min(850px,100%); max-height:calc(100% - 16px); overflow:auto; padding:22px 18px 18px; background:linear-gradient(160deg,rgba(25,35,62,.99),rgba(10,16,34,.99)); border-color:rgba(90,176,255,.4); }
+.tank-index-card h2 { margin:0; color:#fff; text-align:center; font:400 clamp(25px,7vw,32px) var(--font-display); }
+.tank-index-card .roulette-copy { text-align:center; }
+.tank-index-search { display:block; width:100%; box-sizing:border-box; margin:12px 0 6px; padding:10px 12px; border:1px solid rgba(255,255,255,.18); border-radius:8px; color:#fff; background:#111b32; font:600 15px var(--font-ui); outline:none; }
+.tank-index-search:focus { border-color:#59c2ff; }
+.tank-index-count { margin:4px 2px 9px; color:#9fb0d0; font-size:13px; }
+.tank-index-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.tank-index-entry { min-width:0; padding:10px 11px; border:1px solid rgba(255,255,255,.11); border-radius:9px; background:rgba(255,255,255,.045); }
+.tank-index-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.tank-index-head strong { color:#f4f7ff; font:700 16px var(--font-ui); }
+.tank-index-tag { color:#66d9ff; font-size:10px; letter-spacing:.1em; white-space:nowrap; }
+.tank-index-source { margin-top:4px; color:#ffe17b; font-size:13px; }
+.tank-index-desc { margin-top:2px; color:#9fb0d0; font-size:12px; line-height:1.25; }
+.tank-index-empty { grid-column:1/-1; padding:20px; color:#9fb0d0; text-align:center; }
+@media (max-width:620px) { .tank-index-list { grid-template-columns:1fr; } .tank-index-card { padding:20px 13px 14px; } #tankIndexBtn { padding:4px 6px; font-size:11px; } }
+</style>
+
+<div id="app">
+  <canvas id="gl" aria-label="Arena de tanques en 3D"></canvas>
+  <canvas id="ov"></canvas>
+
+  <div id="hud" hidden>
+    <div id="help" class="panel"><b>WASD</b> mover · <b>Ratón</b> apuntar · <b>Clic / Espacio</b> disparar<br><b>Flechas</b> girar cámara suavemente · <b>Rueda/pinch</b> zoom · <b>Botón derecho</b> arrastrar rápido · <b>1-8</b> mejorar · <b>E</b> autoshot · <b>V</b> vista<br>Móvil: <b>CAM</b> + arrastrar derecha; pellizca para zoom.</div>
+    <div id="board" class="panel"><h3>Clasificación</h3><ol id="boardList"></ol></div>
+    <button id="autoShotBtn" type="button" aria-pressed="false">AUTOSHOT: OFF</button>
+    <button id="camModeBtn" type="button" aria-pressed="false">CAM: OFF</button>
+    <div id="gemPanel" class="panel"><span>◆ <b id="gemsCount">0</b> GEMAS</span><button id="chestBtn" type="button">COFRES</button><button id="tankIndexBtn" type="button">ÍNDICE</button></div>
+    <div id="classBox" class="panel" hidden><h3 id="classTitle">Elige tu clase</h3><div id="classBtns"></div></div>
+    <div id="stats" class="panel idle">
+      <div class="hdr"><span>Mejoras</span><b id="ptsN">0</b></div>
+      <div id="statRows"></div>
+          </div>
+    <canvas id="mini" width="224" height="224"></canvas>
+    <div id="xp">
+      <div class="top"><span id="pName">Tú</span><span id="pScore">0</span></div>
+      <div class="bar"><div id="xpFill"></div><div id="xpLabel">Nivel 1</div></div>
+    </div>
+    <div id="feed"></div>
+  </div>
+
+  <div id="menu" class="screen">
+    <div class="card panel">
+      <h1>TANK <span>WARS</span></h1>
+      <p>Explora una arena enorme y mejora tu tanque. Gira la ruleta exclusiva: si desbloqueas al Fénix, podrás elegirlo como evolución al nivel 110.</p>
+      <input id="nameIn" maxlength="14" placeholder="Tu nombre" autocomplete="off" spellcheck="false">
+      <button id="playBtn" class="play" type="button">JUGAR</button>
+      <button id="menuRouletteBtn" class="roulette-menu" type="button">RULETA EXCLUSIVA</button>
+      <p id="rouletteMenuStatus" class="fine roulette-status" aria-live="polite"></p>
+      <button id="tankIndexMenuBtn" class="tank-index-menu" type="button">ÍNDICE DE TANQUES</button>
+      <p class="fine">Ahora juegas contra bots. El código está separado para pasarlo a <b>online</b> más adelante.</p>
+    </div>
+  </div>
+
+  <div id="dead" class="screen" hidden>
+    <div class="card panel">
+      <div class="dtitle">Te han destruido</div>
+      <h1 id="dKiller" style="margin-top:6px">Alguien</h1>
+      <div class="kv">
+        <div><small>Puntuación</small><b id="dScore">0</b></div>
+        <div><small>Nivel</small><b id="dLevel">1</b></div>
+        <div><small>Bajas</small><b id="dKills">0</b></div>
+        <div><small>Tiempo</small><b id="dTime">0:00</b></div>
+      </div>
+      <button id="againBtn" class="play" type="button">JUGAR DE NUEVO</button>
+    </div>
+  </div>
+
+  <div id="rouletteModal" class="roulette-screen" hidden>
+    <section class="roulette-card panel" role="dialog" aria-modal="true" aria-labelledby="rouletteTitle">
+      <button id="rouletteClose" class="roulette-close" type="button" aria-label="Cerrar">×</button>
+      <p class="roulette-kicker">RULETA EXCLUSIVA · MENÚ</p>
+      <h2 id="rouletteTitle">Ruleta de tanques</h2>
+      <p class="roulette-copy">Un giro por perfil. Si ganas al Fénix, podrás elegirlo como evolución al alcanzar el nivel 110.</p>
+      <div class="wheel-wrap"><div class="wheel-pointer"></div><div id="rouletteWheel" class="wheel" aria-label="Ruleta de premios"></div></div>
+      <div id="rouletteResult" class="roulette-result" aria-live="polite">Pulsa para descubrir tu premio</div>
+      <button id="spinBtn" class="play" type="button">GIRAR RULETA</button>
+    </section>
+  </div>
+  <div id="chestModal" class="chest-screen" hidden>
+    <section class="chest-card panel" role="dialog" aria-modal="true" aria-labelledby="chestTitle">
+      <button id="chestClose" class="roulette-close" type="button" aria-label="Cerrar">×</button>
+      <p class="roulette-kicker">BOTÍN DE COMBATE</p>
+      <h2 id="chestTitle">Cofres especiales</h2>
+      <p class="roulette-copy">Gasta gemas para conseguir una mejora exclusiva para el tanque de esta vida. Cada cofre se puede abrir una vez por partida.</p>
+      <div class="chest-wallet">Tus gemas: <b id="chestWallet">0</b> ◆</div>
+      <div id="chestChoices" class="chest-choices"></div>
+      <div id="chestResult" class="chest-result" aria-live="polite">Las gemas se conservan entre partidas.</div>
+    </section>
+  </div>
+  <div id="tankIndexModal" class="tank-index-screen" hidden>
+    <section class="tank-index-card panel" role="dialog" aria-modal="true" aria-labelledby="tankIndexTitle">
+      <button id="tankIndexClose" class="roulette-close" type="button" aria-label="Cerrar">×</button>
+      <p class="roulette-kicker">ARCHIVO DE LA ARENA</p>
+      <h2 id="tankIndexTitle">Índice de tanques</h2>
+      <p class="roulette-copy">Clases, evoluciones, nivel de desbloqueo y tanque del que procede cada una.</p>
+      <input id="tankIndexSearch" class="tank-index-search" type="search" placeholder="Buscar tanque o procedencia…" autocomplete="off">
+      <div id="tankIndexCount" class="tank-index-count"></div>
+      <div id="tankIndexList" class="tank-index-list"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/*SIM-START
+  Simulación pura: sin DOM ni Three.js. Es la parte que en el futuro correrá en un servidor Node.
+  El cliente solo le manda órdenes (input, mejora, clase) y lee el estado. */
+const HALF = 9200, CELL = 160, STAT_MAX = 12, MAX_LEVEL = 120, DT = 1 / 60, BOT_AGGRESSION = .62;
+const GRID_OFFSET = 96, GRID_STRIDE = 193;
+const XP_ZONE_RADIUS = 340;
+// Each straight cover is exactly six tank widths (6 x 50 world units).
+const COVER_LAYOUT = [
+  { x: 0, y: -1600, w: 560, h: 58 }, { x: 1600, y: 0, w: 58, h: 560 },
+  { x: 0, y: 1600, w: 560, h: 58 }, { x: -1600, y: 0, w: 58, h: 560 },
+  { x: -3600, y: -3000, w: 680, h: 64 }, { x: -4300, y: -2300, w: 64, h: 680 },
+  { x: 3600, y: 3000, w: 680, h: 64 }, { x: 4300, y: 2300, w: 64, h: 680 },
+  { x: 0, y: -6700, w: 1050, h: 82 }, { x: 6700, y: 0, w: 82, h: 1050 },
+  { x: 0, y: 6700, w: 1050, h: 82 }, { x: -6700, y: 0, w: 82, h: 1050 },
+  { x: -5200, y: -1200, w: 560, h: 58 }, { x: -5800, y: -600, w: 58, h: 560 },
+  { x: 5200, y: 1200, w: 560, h: 58 }, { x: 5800, y: 600, w: 58, h: 560 },
+  { x: -2400, y: 5200, w: 760, h: 60 }, { x: -3100, y: 5900, w: 60, h: 760 },
+  { x: 2400, y: -5200, w: 760, h: 60 }, { x: 3100, y: -5900, w: 60, h: 760 }
+];
+const TIER_LEVELS = [10, 30, 60, 80, 100, 110, 120]; // niveles de clase y evoluciones finales
+const STATS = [
+  { n: 'Regeneración', c: '#ff7aa2' }, { n: 'Salud máxima', c: '#ff9f4a' },
+  { n: 'Daño de cuerpo', c: '#c78bff' }, { n: 'Velocidad de bala', c: '#59c2ff' },
+  { n: 'Penetración', c: '#ffd84a' }, { n: 'Daño de bala', c: '#ff5d6c' },
+  { n: 'Recarga', c: '#7be08a' }, { n: 'Velocidad', c: '#4fe0d0' }
+];
+const baseScore = l => Math.round(5 * (l - 1) + 9 * Math.pow(l - 1, 1.95));
+const scoreFor = l => l <= 1 ? 0 : l <= 45 ? baseScore(l) : baseScore(45) + (l - 45) * 600;
+const ptsAt = l => (l <= 28 || (l >= 30 && (l - 30) % 3 === 0)) ? 1 : 0;
+const SHAPES = {
+  sq:    { r: 20, hp: 10,  cd: 5,  xp: 10,   bc: 3 },
+  tri:   { r: 23, hp: 30,  cd: 8,  xp: 25,   bc: 4 },
+  pent:  { r: 38, hp: 100, cd: 12, xp: 130,  bc: 6 },
+  elite: { r: 48, hp: 850, cd: 22, xp: 2200, bc: 12 }
+};
+const SHAPE_TARGET = { sq: 230, tri: 85, pent: 30, elite: 8 };
+const B = o => Object.assign({ a: 0, l: 1.7, w: 0.8, ox: 0, d: 0, dmg: 1, spd: 1, rel: 1, hp: 1, sp: 0, rc: 1, bs: 1, flare: false }, o);
+const PI = Math.PI;
+const CLASSES = {
+  basic:   { n: 'Básico', tier: 0, b: [B({})] },
+  twin:    { n: 'Doble', tier: 1, from: 'basic', b: [B({ w: .55, ox: -.5, dmg: .8 }), B({ w: .55, ox: .5, d: .5, dmg: .8 })] },
+  sniper:  { n: 'Francotirador', tier: 1, from: 'basic', fov: 1.25, b: [B({ l: 2.3, w: .7, spd: 1.55, rel: 1.6, dmg: 1.15 })] },
+  machine: { n: 'Ametralladora', tier: 1, from: 'basic', b: [B({ l: 1.5, w: .85, rel: .45, dmg: .65, sp: .22, rc: .5, flare: true })] },
+  flank:   { n: 'Flanqueador', tier: 1, from: 'basic', b: [B({}), B({ a: PI })] },
+  triple:  { n: 'Triple', tier: 2, from: 'twin', b: [B({ a: -.5, w: .55, dmg: .75, rel: 1.1 }), B({ a: .5, w: .55, dmg: .75, rel: 1.1 }), B({ l: 1.9, w: .6, dmg: .8, rel: 1.1 })] },
+  twinflank: { n: 'Doble Flanco', tier: 2, from: 'twin', b: [B({ w: .55, ox: -.5, dmg: .8 }), B({ w: .55, ox: .5, d: .5, dmg: .8 }), B({ a: PI, w: .55, ox: -.5, d: .25, dmg: .8 }), B({ a: PI, w: .55, ox: .5, d: .75, dmg: .8 })] },
+  assassin: { n: 'Asesino', tier: 2, from: 'sniper', fov: 1.5, b: [B({ l: 2.7, w: .7, spd: 1.9, rel: 2.0, dmg: 1.5 })] },
+  destroyer: { n: 'Destructor', tier: 2, from: 'machine', b: [B({ l: 1.7, w: 1.45, rel: 3, dmg: 4.2, spd: .75, hp: 2.4, rc: 6 })] },
+  gunner:  { n: 'Artillero', tier: 2, from: 'machine', b: [B({ l: 1.5, w: .38, ox: -.7, rel: .55, dmg: .55 }), B({ l: 1.5, w: .38, ox: .7, rel: .55, dmg: .55 }), B({ l: 1.5, w: .38, ox: -.25, d: .5, rel: .55, dmg: .55 }), B({ l: 1.5, w: .38, ox: .25, d: .5, rel: .55, dmg: .55 })] },
+  triangle: { n: 'Tri-Ángulo', tier: 2, from: 'flank', spd: 1.12, b: [B({}), B({ a: PI - .45, l: 1.5, w: .55, dmg: .8, rc: 2.5 }), B({ a: PI + .45, l: 1.5, w: .55, dmg: .8, rc: 2.5 })] },
+  quad:    { n: 'Cuádruple', tier: 2, from: 'flank', b: [B({}), B({ a: PI / 2 }), B({ a: PI }), B({ a: -PI / 2 })] }
+};
+/* Nivel 60: tanques nuevos (tier 3) */
+const fan = (n, sp, o) => Array.from({ length: n }, (_, i) => B(Object.assign({}, o, { a: (i - (n - 1) / 2) * sp })));
+Object.assign(CLASSES, {
+  hunter:  { n: 'Cazador', tier: 2, from: 'sniper', fov: 1.3, b: [B({ l: 2.2, w: .7, spd: 1.5, rel: 1.7, dmg: 1.1 }), B({ l: 1.9, w: 1.0, d: .5, spd: 1.5, rel: 1.7, dmg: 1.1 })] },
+  pentashot: { n: 'Pentadisparo', tier: 3, from: 'triple', b: fan(5, .4, { w: .5, dmg: .7, rel: 1.15 }) },
+  spreadshot: { n: 'Abanico', tier: 3, from: 'triple', b: fan(7, .24, { w: .42, dmg: .55, rel: 1.2, l: 1.6 }) },
+  tripletwin: { n: 'Triple Doble', tier: 3, from: 'twinflank', b: [0, 2 * PI / 3, 4 * PI / 3].flatMap(a => [B({ a, w: .5, ox: -.5, dmg: .7 }), B({ a, w: .5, ox: .5, d: .5, dmg: .7 })]) },
+  ranger:  { n: 'Explorador', tier: 3, from: 'assassin', fov: 1.8, b: [B({ l: 3.0, w: .6, spd: 2.3, rel: 2.4, dmg: 1.9 })] },
+  predator: { n: 'Depredador', tier: 3, from: 'hunter', fov: 1.35, b: [B({ l: 2.0, w: .7, spd: 1.3, rel: 1.7, dmg: 1.1 }), B({ l: 1.8, w: .9, d: .33, spd: 1.3, rel: 1.7, dmg: 1.1 }), B({ l: 1.6, w: 1.1, d: .66, spd: 1.3, rel: 1.7, dmg: 1.1 })] },
+  streamliner: { n: 'Aerodinámico', tier: 3, from: 'hunter', fov: 1.25, b: [0, 1, 2, 3, 4].map(i => B({ l: 1.9, w: .42, d: i / 5, spd: 1.3, rel: .9, dmg: .55, sp: .03 })) },
+  annihilator: { n: 'Aniquilador', tier: 3, from: 'destroyer', b: [B({ l: 1.8, w: 1.75, rel: 4.2, dmg: 7, spd: .7, hp: 3.2, rc: 10 })] },
+  hybrid:  { n: 'Híbrido', tier: 3, from: 'destroyer', b: [B({ l: 1.7, w: 1.45, rel: 3, dmg: 4.2, spd: .75, hp: 2.4, rc: 6 }), B({ a: PI, l: 1.4, w: .6, rel: 1.4, dmg: 1, d: .5 })] },
+  gatling: { n: 'Gatling', tier: 3, from: 'gunner', b: [-1, -.5, 0, .5, 1].map((ox, i) => B({ l: 1.5, w: .4, ox, d: i * .2, rel: .5, dmg: .45, sp: .1 })) },
+  booster: { n: 'Propulsor', tier: 3, from: 'triangle', spd: 1.25, b: [B({}), B({ a: PI - .45, l: 1.5, w: .55, dmg: .8, rc: 2.5 }), B({ a: PI + .45, l: 1.5, w: .55, dmg: .8, rc: 2.5 }), B({ a: PI - .9, l: 1.3, w: .5, dmg: .7, rc: 2 }), B({ a: PI + .9, l: 1.3, w: .5, dmg: .7, rc: 2 })] },
+  fighter: { n: 'Caza', tier: 3, from: 'triangle', spd: 1.15, b: [B({}), B({ a: PI / 2, w: .55, dmg: .8 }), B({ a: -PI / 2, w: .55, dmg: .8 }), B({ a: PI - .45, l: 1.5, w: .55, dmg: .8, rc: 2.5 }), B({ a: PI + .45, l: 1.5, w: .55, dmg: .8, rc: 2.5 })] },
+  octo:    { n: 'Octo', tier: 3, from: 'quad', b: Array.from({ length: 8 }, (_, i) => B({ a: i * PI / 4, w: .55, dmg: .75, rel: 1.2, d: (i % 2) * .5 })) },
+  fortin:  { n: 'Fortín', tier: 3, from: 'quad', b: [0, 1, 2, 3].map(i => B({ a: i * PI / 2, l: 1.5, w: 1.0, dmg: 1.2, rel: 1.1 })) }
+});
+/* Niveles 80, 100 y 110: evoluciones que se apilan sobre tu tanque (mejoras + cañones extra + aro de color) */
+const ASC = {
+  titan:   { n: 'Titán', d: 'Más grande, con más vida y daño', m: { size: 1.18, hp: 1.3, dmg: 1.3, body: 1.3 }, ring: 0xc7d2e8 },
+  veloz:   { n: 'Veloz', d: 'Dispara y se mueve más rápido', m: { rel: .72, bspd: 1.2, mv: 1.15 }, ring: 0xc7d2e8 },
+  alas:    { n: 'Alas', d: 'Dos cañones laterales extra', m: {}, add: [B({ a: PI / 2, l: 1.3, w: .5, dmg: .65, d: .3 }), B({ a: -PI / 2, l: 1.3, w: .5, dmg: .65, d: .6 })], ring: 0xc7d2e8 },
+  perforador: { n: 'Perforador', d: 'Balas que atraviesan más y pegan fuerte', m: { bhp: 2.2, dmg: 1.25, bspd: 1.15 }, ring: 0xffc23d },
+  rafaga:  { n: 'Ráfaga', d: 'Cadencia de disparo altísima', m: { rel: .7, mv: 1.08 }, ring: 0xffc23d },
+  blindado: { n: 'Blindado', d: 'Mucha vida, regeneración y choque', m: { hp: 1.6, regen: 2, body: 1.5 }, ring: 0xffc23d },
+  leyenda: { n: 'Leyenda', d: 'Mejora todo un poco', m: { dmg: 1.3, rel: .8, hp: 1.3, mv: 1.1, size: 1.08 }, ring: 0x4fe0ff },
+  cometa:  { n: 'Cometa', d: 'Velocidad extrema, balas rapidísimas', m: { mv: 1.35, bspd: 1.4, rel: .75 }, ring: 0x4fe0ff },
+  fortaleza: { n: 'Fortaleza', d: 'Casi indestructible', m: { hp: 2, regen: 3, body: 2, dmg: 1.15 }, ring: 0x4fe0ff },
+  fenix: { n: 'Fénix exclusivo', d: 'Desbloqueado en la ruleta · evolución exclusiva de nivel 110', m: { dmg: 1.35, rel: .82, hp: 1.35, mv: 1.12, bspd: 1.2, regen: 1.5, size: 1.06 }, add: [B({ a: PI / 2, l: 1.45, w: .55, dmg: .78, rel: .9 }), B({ a: -PI / 2, l: 1.45, w: .55, dmg: .78, rel: .9 })], ring: 0xff4fb8 },
+  colosoFinal: { n: 'Coloso Final', d: 'Nivel 120 · blindaje y cañones de asedio', m: { size: 1.2, hp: 1.75, body: 1.5, dmg: 1.32, regen: 1.45 }, add: [B({ a: -.34, l: 1.6, w: .75, dmg: 1.1, rel: 1.1 }), B({ a: .34, l: 1.6, w: .75, dmg: 1.1, rel: 1.1 })], ring: 0xff613d },
+  supernova: { n: 'Supernova', d: 'Nivel 120 · potencia y penetración extremas', m: { dmg: 1.62, rel: .78, bspd: 1.42, bhp: 1.55, hp: 1.18 }, add: [B({ a: -.2, l: 1.8, w: .62, dmg: 1.15, spd: 1.2 }), B({ a: .2, l: 1.8, w: .62, dmg: 1.15, spd: 1.2 })], ring: 0xffd84a },
+  tormentaFinal: { n: 'Tormenta Final', d: 'Nivel 120 · lluvia de disparos y movilidad', m: { rel: .68, mv: 1.28, bspd: 1.25, hp: 1.28, dmg: 1.22 }, add: [B({ a: -.62, l: 1.55, w: .5, dmg: .82 }), B({ a: -.2, l: 1.75, w: .5, dmg: .82 }), B({ a: .2, l: 1.75, w: .5, dmg: .82 }), B({ a: .62, l: 1.55, w: .5, dmg: .82 })], ring: 0x66f0ff }
+};
+const ASC_STAGES = [['titan', 'veloz', 'alas'], ['perforador', 'rafaga', 'blindado'], ['leyenda', 'cometa', 'fortaleza'], ['colosoFinal', 'supernova', 'tormentaFinal']];
+const CHESTS = [
+  { name: 'Cofre de acero', level: 10, cost: 8, rewards: [
+    { id: 'placasAcero', n: 'Placas de acero', d: '+22% salud máxima y +10% regeneración', m: { hp: 1.22, regen: 1.1 } },
+    { id: 'calibreFino', n: 'Calibre afinado', d: '+16% daño de bala y +12% velocidad', m: { dmg: 1.16, bspd: 1.12 } },
+    { id: 'motorLigero', n: 'Motor ligero', d: '+12% movimiento y +8% recarga', m: { mv: 1.12, rel: .92 } }
+  ] },
+  { name: 'Cofre de élite', level: 60, cost: 24, rewards: [
+    { id: 'corazonTitanio', n: 'Corazón de titanio', d: '+32% salud, regeneración y daño de choque', m: { hp: 1.32, regen: 1.35, body: 1.2 } },
+    { id: 'municionNova', n: 'Munición Nova', d: '+28% daño y +35% penetración', m: { dmg: 1.28, bhp: 1.35, bspd: 1.12 } },
+    { id: 'recargaTurbo', n: 'Recarga turbo', d: '+18% cadencia, velocidad y salud', m: { rel: .82, mv: 1.12, hp: 1.16 } }
+  ] },
+  { name: 'Cofre legendario', level: 100, cost: 50, rewards: [
+    { id: 'protocoloColoso', n: 'Protocolo Coloso', d: '+55% salud, +40% choque y regeneración', m: { hp: 1.55, body: 1.4, regen: 1.45 } },
+    { id: 'estrellaPlasma', n: 'Estrella de plasma', d: '+45% daño, +30% velocidad y penetración', m: { dmg: 1.45, bspd: 1.3, bhp: 1.3 } },
+    { id: 'propulsionNova', n: 'Propulsión Nova', d: '+25% movimiento y +25% cadencia', m: { mv: 1.25, rel: .8, size: 1.08 } }
+  ] }
+];
+const CHEST_REWARDS = Object.fromEntries(CHESTS.flatMap(c => c.rewards.map(r => [r.id, r])));
+const BOT_NAMES = ['Zorro', 'Pixel', 'Nova', 'Rayo', 'Bruno', 'Kiko', 'Tigre', 'Luna', 'Dino', 'Pepe', 'Mara', 'Trueno', 'Cobra', 'Lobo', 'Fénix', 'Coco', 'Atlas', 'Sombra'];
+const BOT_COLORS = ['#ff5d6c', '#ffb02e', '#7bd94f', '#3fc8c0', '#9b6bff', '#ff7ac8', '#c9a15b', '#ff8a4c', '#4fd1ff', '#b8d84a', '#e86bff'];
+const PLAYER_COLOR = '#2f8cff';
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+function resolveCircleRect(o, radius, rect) {
+  const minX = rect.x - rect.w / 2, maxX = rect.x + rect.w / 2;
+  const minY = rect.y - rect.h / 2, maxY = rect.y + rect.h / 2;
+  const qx = clamp(o.x, minX, maxX), qy = clamp(o.y, minY, maxY);
+  let dx = o.x - qx, dy = o.y - qy, d2 = dx * dx + dy * dy, nx, ny, overlap;
+  if (d2 >= radius * radius) return null;
+  if (d2 < 1e-10) {
+    const choices = [
+      { d: o.x - minX, x: -1, y: 0 }, { d: maxX - o.x, x: 1, y: 0 },
+      { d: o.y - minY, x: 0, y: -1 }, { d: maxY - o.y, x: 0, y: 1 }
+    ].sort((a, b) => a.d - b.d);
+    nx = choices[0].x; ny = choices[0].y; overlap = radius + choices[0].d;
+  } else {
+    const d = Math.sqrt(d2); nx = dx / d; ny = dy / d; overlap = radius - d;
+  }
+  o.x += nx * overlap; o.y += ny * overlap;
+  return { nx, ny };
+}
+
+class Sim {
+  constructor(seed) {
+    this.rng = mulberry32(seed); this.t = 0; this.nid = 1;
+    this.tanks = new Map(); this.shapes = []; this.bullets = []; this.events = [];
+    this.walls = COVER_LAYOUT.map((w, i) => Object.assign({ id: -1001 - i, k: 'wall' }, w));
+    this.respawn = []; this.deaths = {}; this.grid = new Map(); this.refillT = 0; this.botN = 0; this.fenixUnlocked = false; this.eliteSpawnN = 0;
+    for (const k in SHAPE_TARGET) for (let i = 0; i < SHAPE_TARGET[k]; i++) this.spawnShape(k);
+  }
+  r() { return this.rng(); }
+  rr(a, b) { return a + this.rng() * (b - a); }
+
+  /* ---- altas ---- */
+  spawnShape(k) {
+    const D = SHAPES[k], m = HALF - 120;
+    let a, sp, x, y;
+    if (k === 'elite') {
+      const slot = this.eliteSpawnN++ % SHAPE_TARGET.elite;
+      a = slot * 6.283 / SHAPE_TARGET.elite + this.rr(-.08, .08);
+      const radius = this.rr(185, 220); x = Math.cos(a) * radius; y = Math.sin(a) * radius; sp = this.rr(.15, .45);
+    } else {
+      a = this.rr(0, 6.283); sp = this.rr(5, 15); x = this.rr(-m, m); y = this.rr(-m, m);
+    }
+    const s = { id: this.nid++, k: 'shape', sk: k, x, y, vx: 0, vy: 0, bx: Math.cos(a) * sp, by: Math.sin(a) * sp,
+      r: D.r, hp: D.hp, max: D.hp, cd: D.cd, xp: D.xp, bc: D.bc, rot: this.rr(0, 6.283), vr: this.rr(-.5, .5), hitT: 0, la: null };
+    s.vx = s.bx; s.vy = s.by; s.px = s.x; s.py = s.y; this.shapes.push(s);
+  }
+  addTank(id, name, bot) {
+    const m = HALF - 300; let bx = 0, by = 0, bd = -1;
+    for (let i = 0; i < 8; i++) {
+      const x = this.rr(-m, m), y = this.rr(-m, m); let md = 1e9;
+      for (const o of this.tanks.values()) md = Math.min(md, Math.hypot(o.x - x, o.y - y));
+      if (md > bd) { bd = md; bx = x; by = y; }
+    }
+    const t = { id, k: 'tank', name, bot, col: bot ? BOT_COLORS[(this.botN++) % BOT_COLORS.length] : PLAYER_COLOR,
+      x: bx, y: by, px: bx, py: by, vx: 0, vy: 0, ang: 0, level: 1, score: 0, pts: 0, st: [0, 0, 0, 0, 0, 0, 0, 0], cls: 'basic',
+      hp: 60, maxHp: 0, r: 25, gems: 0, relics: [], chestOpened: [false, false, false], input: { mx: 0, my: 0, aim: 0, fire: false }, next: [0], shotAt: [-9], firing: false,
+      lastHit: -99, la: null, kills: 0, born: this.t, hitT: 0, inv: 5, thinkT: this.r() * .2, jit: 0, strafe: this.r() < .5 ? 1 : -1,
+      bi: 0, build: [5, 6, 4, 1, 3, 7, 0, 2], ai: {} };
+    if (bot) { const b = t.build; for (let i = 0; i < 4; i++) { const j = Math.floor(this.r() * 5); const q = Math.floor(this.r() * 5); [b[j], b[q]] = [b[q], b[j]]; } }
+    t.asc = []; this.rebuild(t); t.hp = t.maxHp; this.tanks.set(id, t); return t;
+  }
+  join(id, name) { if (!this.tanks.has(id)) this.addTank(id, name, false); }
+
+  /* ---- reglas ---- */
+  recompute(t) {
+    const ratio = t.maxHp ? t.hp / t.maxHp : 1, c = CLASSES[t.cls], s = t.st, L = t.level, m = t.mods;
+    const Lr = L <= 60 ? L - 1 : 59 + (L - 60) * 0.35;
+    t.r = 25 * Math.pow(1.011, Lr) * m.size;
+    t.maxHp = (60 + 2 * (L - 1) + 18 * s[1]) * m.hp;
+    t.bodyDmg = (18 + 5 * s[2]) * m.body;
+    t.regen = t.maxHp * (0.0045 + 0.005 * s[0]) * m.regen;
+    t.maxSpeed = 300 * (1 + 0.075 * s[7]) * Math.pow(0.995, Lr) * (c.spd || 1) * m.mv;
+    t.reloadBase = 0.55 * Math.pow(0.88, s[6]) * m.rel;
+    t.bSpeed = 560 * (1 + 0.12 * s[3]) * m.bspd;
+    t.bDmg = (7 + 3 * s[5]) * m.dmg;
+    t.bHp = (3 + 3 * s[4]) * m.bhp;
+    t.hp = t.maxHp * ratio;
+  }
+  addScore(t, amt, exact = false) {
+    const player = this.tanks.get('P');
+    const botCatchup = t.bot && player ? 1 + Math.min(1.2, Math.max(0, player.level - 1) * .01) : 1;
+    const xp = exact ? Math.round(amt) : Math.round(amt * 1.18 * botCatchup);
+    t.score += xp;
+    if (!t.bot) this.events.push({ t: 'gain', id: t.id, amt: xp });
+    let up = false;
+    while (t.level < MAX_LEVEL && t.score >= scoreFor(t.level + 1)) { t.level++; t.pts += ptsAt(t.level); up = true; }
+    if (up) { this.recompute(t); if (!t.bot) this.events.push({ t: 'level', id: t.id, level: t.level }); }
+  }
+  pending(t) {
+    const c = CLASSES[t.cls];
+    if (c.tier < 3) {
+      if (t.level < TIER_LEVELS[c.tier]) return [];
+      const out = []; for (const k in CLASSES) if (CLASSES[k].from === t.cls) out.push(k);
+      return out;
+    }
+    const st = t.asc.length;
+    if (st >= ASC_STAGES.length || t.level < TIER_LEVELS[3 + st]) return [];
+    const choices = ASC_STAGES[st].slice();
+    if (st === 2 && !t.bot && this.fenixUnlocked) choices.push('fenix');
+    return choices;
+  }
+  rebuild(t) {
+    const m = { dmg: 1, rel: 1, bspd: 1, mv: 1, hp: 1, size: 1, regen: 1, body: 1, bhp: 1 };
+    let bar = CLASSES[t.cls].b.slice();
+    for (const a of t.asc) { const A = ASC[a]; for (const k in A.m) m[k] *= A.m[k]; if (A.add) bar = bar.concat(A.add); }
+    for (const id of t.relics) { const R = CHEST_REWARDS[id]; if (R) for (const k in R.m) m[k] *= R.m[k]; }
+    t.mods = m; t.bar = bar; t.sig = t.cls + '|' + t.asc.join(',');
+    t.next = new Array(bar.length).fill(0); t.shotAt = new Array(bar.length).fill(-9);
+    this.recompute(t);
+  }
+  upgrade(id, i) {
+    const t = this.tanks.get(id);
+    if (!t || t.pts <= 0 || i < 0 || i > 7 || t.st[i] >= STAT_MAX) return false;
+    t.st[i]++; t.pts--; this.recompute(t); return true;
+  }
+  chooseClass(id, cid) {
+    const t = this.tanks.get(id);
+    if (!t || !this.pending(t).includes(cid)) return false;
+    if (ASC[cid]) t.asc.push(cid); else t.cls = cid;
+    this.rebuild(t); return true;
+  }
+  openChest(id, tier) {
+    const t = this.tanks.get(id), chest = CHESTS[tier];
+    if (!t || t.bot || !chest) return { ok: false, reason: 'invalid' };
+    if (t.level < chest.level) return { ok: false, reason: 'level', need: chest.level };
+    if (t.gems < chest.cost) return { ok: false, reason: 'gems', need: chest.cost };
+    if (t.chestOpened[tier]) return { ok: false, reason: 'opened' };
+    t.gems -= chest.cost; t.chestOpened[tier] = true;
+    const reward = chest.rewards[Math.floor(this.r() * chest.rewards.length)];
+    t.relics.push(reward.id); this.rebuild(t);
+    this.events.push({ t: 'chest', id: t.id, tier, reward: reward.n });
+    return { ok: true, tier, cost: chest.cost, reward, gems: t.gems };
+  }
+  /* ---- paso de simulación ---- */
+  step(dt) {
+    this.t += dt;
+    for (const t of this.tanks.values()) { t.px = t.x; t.py = t.y; }
+    for (const s of this.shapes) { s.px = s.x; s.py = s.y; }
+    for (const b of this.bullets) { b.px = b.x; b.py = b.y; }
+    for (const t of this.tanks.values()) if (t.bot) this.botThink(t, dt);
+    for (const t of this.tanks.values()) this.updateTank(t, dt);
+    this.updateShapes(dt);
+    this.buildGrid();
+    this.updateBullets(dt);
+    this.collide(dt);
+    this.cleanup();
+    this.refill(dt);
+  }
+
+  updateTank(t, dt) {
+    const inp = t.input; let mx = inp.mx, my = inp.my; const m = Math.hypot(mx, my);
+    if (m > 1) { mx /= m; my /= m; }
+    const k = 1 - Math.exp(-dt * 6);
+    t.vx += (mx * t.maxSpeed - t.vx) * k; t.vy += (my * t.maxSpeed - t.vy) * k;
+    t.x = clamp(t.x + t.vx * dt, -HALF + t.r, HALF - t.r); t.y = clamp(t.y + t.vy * dt, -HALF + t.r, HALF - t.r);
+    t.ang = inp.aim; t.hitT = Math.max(0, t.hitT - dt); t.inv = Math.max(0, t.inv - dt);
+    const bs = t.bar;
+    if (inp.fire && !t.firing) for (let i = 0; i < bs.length; i++) t.next[i] = Math.max(t.next[i], this.t + bs[i].d * t.reloadBase * bs[i].rel);
+    t.firing = inp.fire;
+    if (inp.fire) for (let i = 0; i < bs.length; i++) if (this.t >= t.next[i]) { this.shoot(t, bs[i], i); t.next[i] = this.t + t.reloadBase * bs[i].rel; }
+    t.hp = Math.min(t.maxHp, t.hp + t.regen * (this.t - t.lastHit > 3 ? 1 : 0.15) * dt);
+  }
+  shoot(t, b, i) {
+    const A = t.ang + b.a, ca = Math.cos(A), sa = Math.sin(A), f = t.r * b.l, lat = t.r * b.ox;
+    const x = t.x + ca * f - sa * lat, y = t.y + sa * f + ca * lat;
+    const sp = A + (this.r() - .5) * 2 * b.sp, spd = t.bSpeed * b.spd * (1 + (this.r() - .5) * .06);
+    this.bullets.push({ id: this.nid++, o: t.id, x, y, px: x, py: y, vx: Math.cos(sp) * spd, vy: Math.sin(sp) * spd,
+      r: t.r * b.w * .5 * b.bs, hp: t.bHp * b.hp, dmg: t.bDmg * b.dmg, life: 2.3, col: t.col, hit: [] });
+    t.vx -= ca * 40 * b.rc; t.vy -= sa * 40 * b.rc; t.shotAt[i] = this.t;
+  }
+  updateShapes(dt) {
+    const k = 1 - Math.exp(-dt * .8);
+    for (const s of this.shapes) {
+      s.vx += (s.bx - s.vx) * k; s.vy += (s.by - s.vy) * k;
+      s.x += s.vx * dt; s.y += s.vy * dt; s.rot += s.vr * dt; s.hitT = Math.max(0, s.hitT - dt);
+      const m = HALF - s.r;
+      if (s.x < -m || s.x > m) { s.bx = -s.bx; s.vx = -s.vx; s.x = clamp(s.x, -m, m); }
+      if (s.y < -m || s.y > m) { s.by = -s.by; s.vy = -s.vy; s.y = clamp(s.y, -m, m); }
+      for (const w of this.walls) {
+        const hit = resolveCircleRect(s, s.r, w);
+        if (hit) { const vn = s.vx * hit.nx + s.vy * hit.ny; if (vn < 0) { s.vx -= 1.8 * vn * hit.nx; s.vy -= 1.8 * vn * hit.ny; s.bx = s.vx; s.by = s.vy; } }
+      }
+      if (s.sk === 'elite') {
+        const d = Math.hypot(s.x, s.y), limit = XP_ZONE_RADIUS - s.r;
+        if (d > limit) { const nx = s.x / d, ny = s.y / d; s.x = nx * limit; s.y = ny * limit; const vn = s.vx * nx + s.vy * ny; if (vn > 0) { s.vx -= 1.8 * vn * nx; s.vy -= 1.8 * vn * ny; s.bx = s.vx; s.by = s.vy; } }
+      }
+    }
+  }
+  buildGrid() {
+    const g = this.grid; g.clear();
+    const addAt = (e, cx, cy) => { const k = (cx + GRID_OFFSET) * GRID_STRIDE + cy + GRID_OFFSET; let l = g.get(k); if (!l) { l = []; g.set(k, l); } l.push(e); };
+    const add = e => addAt(e, Math.floor(e.x / CELL), Math.floor(e.y / CELL));
+    for (const t of this.tanks.values()) add(t);
+    for (const s of this.shapes) add(s);
+    for (const w of this.walls) {
+      const x0 = Math.floor((w.x - w.w / 2) / CELL), x1 = Math.floor((w.x + w.w / 2) / CELL);
+      const y0 = Math.floor((w.y - w.h / 2) / CELL), y1 = Math.floor((w.y + w.h / 2) / CELL);
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) addAt(w, x, y);
+    }
+  }
+  near(x, y, fn) {
+    const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const l = this.grid.get((cx + i + GRID_OFFSET) * GRID_STRIDE + cy + j + GRID_OFFSET);
+      if (l) for (let q = 0; q < l.length; q++) fn(l[q]);
+    }
+  }
+  updateBullets(dt) {
+    const arr = this.bullets, half = dt * .5, cell = 128;
+    for (const b of arr) { b._dead = (b.life -= dt) <= 0; }
+    for (let step = 0; step < 2; step++) {
+      // Advance all live bullets together, retaining their short paths for swept collision checks.
+      for (const b of arr) if (!b._dead) {
+        b._sx = b.x; b._sy = b.y;
+        b.x += b.vx * half; b.y += b.vy * half;
+        if (Math.abs(b.x) > HALF + 60 || Math.abs(b.y) > HALF + 60) b._dead = true;
+      }
+      const buckets = new Map();
+      for (let i = 0; i < arr.length; i++) {
+        const b = arr[i]; if (b._dead) continue;
+        const cx = Math.floor(b.x / cell), cy = Math.floor(b.y / cell), key = cx + ',' + cy;
+        let list = buckets.get(key); if (!list) { list = []; buckets.set(key, list); } list.push(i);
+      }
+      // Enemy projectiles collide. Remaining projectile health wins and carries on toward targets.
+      for (let i = 0; i < arr.length; i++) {
+        const a = arr[i]; if (a._dead) continue;
+        const cx = Math.floor(a.x / cell), cy = Math.floor(a.y / cell);
+        for (let ox = -2; ox <= 2 && !a._dead; ox++) for (let oy = -2; oy <= 2 && !a._dead; oy++) {
+          const list = buckets.get((cx + ox) + ',' + (cy + oy)); if (!list) continue;
+          for (const j of list) {
+            if (j <= i) continue;
+            const b = arr[j]; if (b._dead || a.o === b.o) continue;
+            const px = a._sx - b._sx, py = a._sy - b._sy;
+            const vx = (a.x - a._sx) - (b.x - b._sx), vy = (a.y - a._sy) - (b.y - b._sy);
+            const vv = vx * vx + vy * vy, t = vv ? clamp(-(px * vx + py * vy) / vv, 0, 1) : 0;
+            const dx = px + vx * t, dy = py + vy * t, rr = a.r + b.r;
+            if (dx * dx + dy * dy > rr * rr) continue;
+            if (a.hp > b.hp) { a.hp -= b.hp; b._dead = true; }
+            else if (b.hp > a.hp) { b.hp -= a.hp; a._dead = true; break; }
+            else { a._dead = true; b._dead = true; break; }
+          }
+        }
+      }
+      for (const b of arr) if (!b._dead) this.near(b.x, b.y, e => {
+        if (b._dead || e.id === b.o || b.hit.includes(e.id)) return;
+        if (e.k === 'wall') {
+          const qx = clamp(b.x, e.x - e.w / 2, e.x + e.w / 2), qy = clamp(b.y, e.y - e.h / 2, e.y + e.h / 2);
+          const wx = b.x - qx, wy = b.y - qy;
+          if (wx * wx + wy * wy <= b.r * b.r) { b.hit.push(e.id); b._dead = true; }
+          return;
+        }
+        const rr = e.r + b.r, dx = e.x - b.x, dy = e.y - b.y;
+        if (dx * dx + dy * dy > rr * rr) return;
+        b.hit.push(e.id);
+        const isT = e.k === 'tank';
+        if (!(isT && e.inv > 0)) { e.hp -= b.dmg; e.la = b.o; if (isT) e.lastHit = this.t; }
+        e.hitT = .12;
+        b.hp -= isT ? e.bodyDmg * .2 : e.bc;
+        if (b.hp <= 0) b._dead = true;
+      });
+    }
+    for (let i = arr.length - 1; i >= 0; i--) if (arr[i]._dead) { arr[i] = arr[arr.length - 1]; arr.pop(); }
+    for (const b of arr) { delete b._dead; delete b._sx; delete b._sy; }
+  }
+  collide(dt) {
+    for (const t of this.tanks.values()) {
+      this.near(t.x, t.y, e => {
+        if (e === t || e.k === 'wall' || (e.k === 'tank' && e.id < t.id)) return;
+        const dx = t.x - e.x, dy = t.y - e.y, d = Math.hypot(dx, dy) || .001, ov = t.r + e.r - d;
+        if (ov <= 0) return;
+        const nx = dx / d, ny = dy / d;
+        if (e.k === 'shape') {
+          t.x += nx * ov * .3; t.y += ny * ov * .3; e.x -= nx * ov * .7; e.y -= ny * ov * .7;
+          e.vx -= nx * 90 * dt * 6; e.vy -= ny * 90 * dt * 6;
+          e.hp -= t.bodyDmg * 1.5 * dt; e.la = t.id; e.hitT = .12;
+          if (t.inv <= 0) { t.hp -= e.cd * 1.5 * dt; t.lastHit = this.t; t.hitT = .12; }
+        } else {
+          t.x += nx * ov * .5; t.y += ny * ov * .5; e.x -= nx * ov * .5; e.y -= ny * ov * .5;
+          t.vx += nx * 60 * dt * 6; t.vy += ny * 60 * dt * 6; e.vx -= nx * 60 * dt * 6; e.vy -= ny * 60 * dt * 6;
+          if (e.inv <= 0) { e.hp -= t.bodyDmg * 1.5 * dt; e.la = t.id; e.lastHit = this.t; e.hitT = .12; }
+          if (t.inv <= 0) { t.hp -= e.bodyDmg * 1.5 * dt; t.la = e.id; t.lastHit = this.t; t.hitT = .12; }
+        }
+      });
+      for (const w of this.walls) {
+        const hit = resolveCircleRect(t, t.r, w);
+        if (hit) { const vn = t.vx * hit.nx + t.vy * hit.ny; if (vn < 0) { t.vx -= vn * hit.nx; t.vy -= vn * hit.ny; } }
+      }
+    }
+  }
+  cleanup() {
+    for (let i = this.shapes.length - 1; i >= 0; i--) {
+      const s = this.shapes[i];
+      if (s.hp > 0) continue;
+      const kt = this.tanks.get(s.la); if (kt) this.addScore(kt, s.xp);
+      this.events.push({ t: 'shape', x: s.x, y: s.y, sk: s.sk });
+      this.shapes.splice(i, 1);
+    }
+    for (const t of [...this.tanks.values()]) {
+      if (t.hp > 0) continue;
+      const kt = this.tanks.get(t.la);
+      if (kt && kt !== t) {
+        this.addScore(kt, Math.max(80, t.score * .5));
+        const gems = Math.max(1, Math.ceil(t.level / 10)); kt.gems += gems;
+        this.events.push({ t: 'gems', id: kt.id, amount: gems, total: kt.gems, victimLevel: t.level });
+        kt.kills++;
+      }
+      this.deaths[t.id] = { name: t.name, score: Math.floor(t.score), level: t.level, kills: t.kills, time: this.t - t.born, killer: kt ? kt.name : 'La arena' };
+      this.events.push({ t: 'boom', x: t.x, y: t.y, col: t.col, r: t.r });
+      this.events.push({ t: 'kill', victim: t.name, vid: t.id, killer: kt ? kt.name : null, kid: kt ? kt.id : null });
+      this.tanks.delete(t.id);
+      if (t.bot) this.respawn.push(this.t + 4);
+    }
+  }
+  refill(dt) {
+    this.refillT -= dt;
+    if (this.refillT <= 0) {
+      this.refillT = .2;
+      const c = { sq: 0, tri: 0, pent: 0, elite: 0 }; for (const s of this.shapes) c[s.sk]++;
+      for (const k in SHAPE_TARGET) if (c[k] < SHAPE_TARGET[k]) this.spawnShape(k);
+    }
+    for (let i = this.respawn.length - 1; i >= 0; i--) if (this.t >= this.respawn[i]) {
+      this.respawn.splice(i, 1);
+      this.addTank('B' + this.nid++, BOT_NAMES[Math.floor(this.r() * BOT_NAMES.length)], true);
+    }
+  }
+
+  /* ---- bots ---- */
+  botThink(b, dt) {
+    b.thinkT -= dt; const ai = b.ai;
+    if (b.thinkT <= 0) {
+      b.thinkT = .12 + this.r() * .1;
+      for (let g = 0; g < 20 && b.pts > 0; g++) this.upgrade(b.id, b.build[(b.bi++) % 5]);
+      const pend = this.pending(b); if (pend.length && this.t - b.born > 4) this.chooseClass(b.id, pend[Math.floor(this.r() * pend.length)]);
+      let tgt = null, sc = 0, thr = null, thd = 1e9;
+      for (const s of this.shapes) {
+        const dx = s.x - b.x, dy = s.y - b.y, d2 = dx * dx + dy * dy; if (d2 > 1e6) continue;
+        const v = (SHAPES[s.sk].xp + 6) / (Math.sqrt(d2) + 140); if (v > sc) { sc = v; tgt = s; }
+      }
+      for (const o of this.tanks.values()) {
+        if (o === b || o.inv > 0) continue;
+        const d = Math.hypot(o.x - b.x, o.y - b.y); if (d > 1000 * BOT_AGGRESSION) continue;
+        const strong = o.level > b.level + 4 || (b.hp < b.maxHp * .5 && o.hp > b.hp * 2.5);
+        if (strong) { if (d < 650 / BOT_AGGRESSION && d < thd) { thr = o; thd = d; } }
+        else { const v = BOT_AGGRESSION * 1.1 * (o.score + 70) / (d + 160); if (v > sc) { sc = v; tgt = o; } }
+      }
+      ai.tgt = tgt; ai.thr = thr; b.jit = (this.r() - .5) * .14; if (this.r() < .05) b.strafe = -b.strafe;
+    }
+    let mx = 0, my = 0, aim = b.input.aim, fire = false;
+    const alive = o => o && o.hp > 0 && (o.k === 'shape' || this.tanks.get(o.id) === o);
+    if (alive(ai.thr)) {
+      const o = ai.thr, dx = b.x - o.x, dy = b.y - o.y, d = Math.hypot(dx, dy) || 1;
+      mx = dx / d; my = dy / d; aim = Math.atan2(o.y - b.y, o.x - b.x) + b.jit; fire = d < 600 * BOT_AGGRESSION;
+    } else if (alive(ai.tgt)) {
+      const o = ai.tgt, dx0 = o.x - b.x, dy0 = o.y - b.y, d = Math.hypot(dx0, dy0) || 1;
+      let tx = o.x, ty = o.y;
+      if (o.k === 'tank') { const tt = d / b.bSpeed; tx += o.vx * tt; ty += o.vy * tt; }
+      aim = Math.atan2(ty - b.y, tx - b.x) + b.jit;
+      const want = o.k === 'tank' ? 380 : (o.sk === 'pent' ? 330 : 240), ux = dx0 / d, uy = dy0 / d;
+      if (d > want + 70) { mx = ux; my = uy; } else if (d < want - 70) { mx = -ux; my = -uy; } else { mx = -uy * b.strafe; my = ux * b.strafe; }
+      fire = d < 800 * BOT_AGGRESSION;
+    } else {
+      if (!ai.w || Math.hypot(ai.w.x - b.x, ai.w.y - b.y) < 150 || this.t > ai.wt) { ai.w = { x: this.rr(-HALF + 300, HALF - 300), y: this.rr(-HALF + 300, HALF - 300) }; ai.wt = this.t + 8; }
+      const dx = ai.w.x - b.x, dy = ai.w.y - b.y, d = Math.hypot(dx, dy) || 1; mx = dx / d; my = dy / d; aim = Math.atan2(my, mx);
+    }
+    if (Math.abs(b.x) > HALF - 220) mx -= Math.sign(b.x) * 1.2;
+    if (Math.abs(b.y) > HALF - 220) my -= Math.sign(b.y) * 1.2;
+    b.input.mx = mx; b.input.my = my; b.input.aim = aim; b.input.fire = fire;
+  }
+}
+/*SIM-END*/
+
+/* ================= 2. RED LOCAL =================
+   El cliente solo habla con "net". Para online se sustituye esto por un WebSocket:
+   join/sendInput/upgrade/chooseClass pasan a ser mensajes y update() recibe snapshots del servidor. */
+const net = {
+  sim: new Sim((Math.random() * 1e9) | 0), id: 'P', acc: 0,
+  start() { for (let i = 0; i < 4; i++) this.sim.addTank('B' + this.sim.nid++, BOT_NAMES[i % BOT_NAMES.length], true); },
+  join(name) { this.sim.join(this.id, name); },
+  me() { return this.sim.tanks.get(this.id); },
+  sendInput(inp) { const t = this.me(); if (t) Object.assign(t.input, inp); },
+  upgrade(i) { return this.sim.upgrade(this.id, i); },
+  chooseClass(c) { return this.sim.chooseClass(this.id, c); },
+  openChest(tier) { return this.sim.openChest(this.id, tier); },
+  update(dt) { this.acc += Math.min(dt, .25); let n = 0; while (this.acc >= DT && n++ < 8) { this.sim.step(DT); this.acc -= DT; } return this.acc / DT; },
+  drain() { const e = this.sim.events; this.sim.events = []; return e; }
+};
+net.start();
+const sim = net.sim;
+let fenixUnlocked = false, menuRouletteUsed = false, startBonusPoints = 0, startBonusScore = 0, profileGems = 0;
+try {
+  fenixUnlocked = localStorage.getItem('tanquex-fenix-unlocked') === 'true';
+  menuRouletteUsed = localStorage.getItem('tanquex-menu-roulette-used') === 'true';
+  startBonusPoints = Math.max(0, Number(localStorage.getItem('tanquex-roulette-points')) || 0);
+  startBonusScore = Math.min(10000, Math.max(0, Number(localStorage.getItem('tanquex-roulette-score')) || 0));
+  if (startBonusScore) localStorage.setItem('tanquex-roulette-score', String(startBonusScore));
+  profileGems = Math.max(0, Math.floor(Number(localStorage.getItem('tanquex-gems')) || 0));
+} catch (e) {}
+sim.fenixUnlocked = fenixUnlocked;
+
+/* ================= 3. RENDER 3D ================= */
+const $ = id => document.getElementById(id);
+const glCv = $('gl'), ovCv = $('ov'), ov = ovCv.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas: glCv, antialias: true });
+const scene = new THREE.Scene();
+const SKY = 0xc9d3e0;
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 2800, 7000);
+const camera = new THREE.PerspectiveCamera(45, 1, 10, 9000);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa8bf, 0.95));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-500, 1000, 400); scene.add(sun);
+
+// suelo
+(function buildFloor() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'); g.fillStyle = '#dce6f1'; g.fillRect(0, 0, 128, 128);
+  g.fillStyle = 'rgba(255,255,255,.16)'; g.fillRect(2, 2, 62, 62); g.fillRect(66, 66, 60, 60);
+  g.strokeStyle = 'rgba(79,111,148,.13)'; g.lineWidth = 1;
+  for (const p of [32, 64, 96]) { g.beginPath(); g.moveTo(p, 0); g.lineTo(p, 128); g.moveTo(0, p); g.lineTo(128, p); g.stroke(); }
+  g.strokeStyle = 'rgba(69,101,140,.27)'; g.lineWidth = 2; g.strokeRect(1, 1, 126, 126);
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(HALF * 2 / 100, HALF * 2 / 100);
+  tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const arena = new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, HALF * 2), new THREE.MeshBasicMaterial({ map: tex }));
+  arena.rotation.x = -Math.PI / 2; scene.add(arena);
+  // Marcas planas de orientación: decorativas, no tienen colisión ni afectan al juego.
+  for (const [r, width, color, opacity] of [[1200, 4, 0x5b8db8, .18], [3000, 4, 0x5b8db8, .14], [5200, 5, 0x7898b8, .12], [8000, 6, 0x7898b8, .09]]) {
+    const mark = new THREE.Mesh(new THREE.RingGeometry(r - width, r + width, 128), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+    mark.rotation.x = -Math.PI / 2; mark.position.y = .12; scene.add(mark);
+  }
+  const xpDisc = new THREE.Mesh(new THREE.CircleGeometry(XP_ZONE_RADIUS, 64), new THREE.MeshBasicMaterial({ color: 0x32cde8, transparent: true, opacity: .10, side: THREE.DoubleSide, depthWrite: false }));
+  xpDisc.rotation.x = -Math.PI / 2; xpDisc.position.y = .08; scene.add(xpDisc);
+  const centerMark = new THREE.Mesh(new THREE.RingGeometry(XP_ZONE_RADIUS - 7, XP_ZONE_RADIUS + 7, 64), new THREE.MeshBasicMaterial({ color: 0x28bdda, transparent: true, opacity: .58, side: THREE.DoubleSide, depthWrite: false }));
+  centerMark.rotation.x = -Math.PI / 2; centerMark.position.y = .13; scene.add(centerMark);
+  const zoneCanvas = document.createElement('canvas'); zoneCanvas.width = 512; zoneCanvas.height = 112;
+  const zg = zoneCanvas.getContext('2d'); zg.fillStyle = 'rgba(9, 37, 53, .84)'; zg.fillRect(8, 12, 496, 88);
+  zg.strokeStyle = 'rgba(69, 225, 246, .9)'; zg.lineWidth = 5; zg.strokeRect(10, 14, 492, 84);
+  zg.fillStyle = '#8cf4ff'; zg.font = '700 38px Arial'; zg.textAlign = 'center'; zg.textBaseline = 'middle'; zg.fillText('BLOQUES ELITE · XP ALTA', 256, 57);
+  const zoneTag = new THREE.Mesh(new THREE.PlaneGeometry(260, 58), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(zoneCanvas), transparent: true, depthWrite: false }));
+  zoneTag.rotation.x = -Math.PI / 2; zoneTag.position.set(0, .22, 0); scene.add(zoneTag);
+  const out = new THREE.Mesh(new THREE.PlaneGeometry(36000, 36000), new THREE.MeshBasicMaterial({ color: 0xaebbd0 }));
+  out.rotation.x = -Math.PI / 2; out.position.y = -2; scene.add(out);
+  const wm = new THREE.MeshLambertMaterial({ color: 0x7d90ad });
+  for (const [x, z, w, d] of [[0, -HALF - 15, HALF * 2 + 60, 30], [0, HALF + 15, HALF * 2 + 60, 30], [-HALF - 15, 0, 30, HALF * 2], [HALF + 15, 0, 30, HALF * 2]]) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 16, d), wm); m.position.set(x, 8, z); scene.add(m);
+  }
+})();
+
+const outMat = new THREE.MeshBasicMaterial({ color: 0x141a2e, side: THREE.BackSide });
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 32);
+const triGeo = new THREE.CylinderGeometry(1, 1, 1, 3);
+const pentGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
+const eliteGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
+const blobGeo = new THREE.CircleGeometry(1, 24);
+const blobMat = new THREE.MeshBasicMaterial({ color: 0x1b2b4a, transparent: true, opacity: 0.16, depthWrite: false });
+const treadMat = new THREE.MeshLambertMaterial({ color: 0x344054 });
+const sensorMat = new THREE.MeshBasicMaterial({ color: 0x74eaff });
+const wallViews = new Map();
+function makeWallView(w) {
+  const g = new THREE.Group(), bodyMat = new THREE.MeshLambertMaterial({ color: 0x70819a }), capMat = new THREE.MeshLambertMaterial({ color: 0x45566f }), stripeMat = new THREE.MeshBasicMaterial({ color: 0x4bd8e7 });
+  const body = new THREE.Mesh(boxGeo, bodyMat); body.scale.set(w.w, 84, w.h); body.position.y = 42; g.add(body);
+  const cap = new THREE.Mesh(boxGeo, capMat); cap.scale.set(w.w + 14, 9, w.h + 14); cap.position.y = 87; g.add(cap);
+  const stripe = new THREE.Mesh(boxGeo, stripeMat); stripe.scale.set(Math.min(w.w * .42, 90), 3, Math.min(w.h * .42, 90)); stripe.position.set(0, 92, 0); g.add(stripe);
+  g.position.set(w.x, 0, w.y); return g;
+}
+
+function hull(parent, geo, sx, sy, sz, px, py, pz, grow) {
+  const o = new THREE.Mesh(geo, outMat); o.scale.set(sx + grow, sy + grow, sz + grow); o.position.set(px, py, pz); parent.add(o); return o;
+}
+function blob(parent, s) { const m = new THREE.Mesh(blobGeo, blobMat); m.rotation.x = -Math.PI / 2; m.position.y = 0.05; m.scale.set(s, s, s); parent.add(m); }
+
+/* tanques */
+const tankViews = new Map();
+const remoteTankViews = new Map();
+function multiplayerColor(id) {
+  let hash = 0; for (const ch of String(id)) hash = (Math.imul(hash, 31) + ch.charCodeAt(0)) | 0;
+  return BOT_COLORS[Math.abs(hash) % BOT_COLORS.length];
+}
+function makeTankView(t) {
+  const g = new THREE.Group(), turret = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: t.col, transparent: true });
+  const body = new THREE.Mesh(cylGeo, bodyMat); body.scale.set(1, .7, 1); body.position.y = .35; g.add(body);
+  hull(g, cylGeo, 1, .7, 1, 0, .35, 0, .09);
+  blob(g, 1.35);
+  for (const side of [-1, 1]) {
+    const tread = new THREE.Mesh(boxGeo, treadMat); tread.scale.set(1.22, .18, .2); tread.position.set(0, .14, side * .76); g.add(tread);
+    hull(g, boxGeo, 1.22, .18, .2, 0, .14, side * .76, .04);
+  }
+  // Una pequeña placa dorada de mantenimiento aporta personalidad sin recargar la silueta.
+  const detailMat = new THREE.MeshLambertMaterial({ color: 0xffc23d });
+  const detail = new THREE.Mesh(boxGeo, detailMat); detail.scale.set(.28, .045, .14); detail.position.set(-.42, .735, 0); g.add(detail);
+  g.add(turret);
+  const hatchMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(t.col).offsetHSL(0, .12, .18) });
+  const hatch = new THREE.Mesh(boxGeo, hatchMat); hatch.scale.set(.32, .08, .3); hatch.position.set(-.18, .82, 0); turret.add(hatch);
+  const sensor = new THREE.Mesh(new THREE.SphereGeometry(.16, 10, 8), sensorMat); sensor.scale.set(1.15, .55, .8); sensor.position.set(.43, .9, 0); turret.add(sensor);
+  const v = { g, turret, bodyMat, hatchMat, detailMat, cls: null, holders: [], barrelMat: new THREE.MeshLambertMaterial({ color: 0x8b95a8 }), capMat: new THREE.MeshLambertMaterial({ color: new THREE.Color(t.col).offsetHSL(0, 0, .08) }), parts: [] };
+  return v;
+}
+const ringGeo = new THREE.TorusGeometry(1, .06, 8, 56);
+function buildBarrels(v, t) {
+  for (const p of v.parts) v.turret.remove(p);
+  for (const r of v.rings || []) { v.g.remove(r); r.material.dispose(); }
+  v.parts = []; v.holders = []; v.cls = t.sig;
+  v.rings = t.asc.map((a, i) => {
+    const r = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: ASC[a].ring }));
+    r.rotation.x = Math.PI / 2; r.position.y = .14; r.scale.setScalar(1.12 + i * .16); v.g.add(r); return r;
+  });
+  t.bar.forEach(b => {
+    const bg = new THREE.Group(); bg.rotation.y = -b.a;
+    const holder = new THREE.Group(); bg.add(holder);
+    const h = Math.max(.34, Math.min(.6, b.w * .7));
+    const m = new THREE.Mesh(boxGeo, v.barrelMat); m.scale.set(b.l, h, b.w); m.position.set(b.l / 2, .45, b.ox); holder.add(m);
+    hull(holder, boxGeo, b.l, h, b.w, b.l / 2, .45, b.ox, .12);
+    if (b.flare) {
+      const f = new THREE.Mesh(boxGeo, v.barrelMat); f.scale.set(.3, h * 1.15, b.w * 1.45); f.position.set(b.l - .15, .45, b.ox); holder.add(f);
+      hull(holder, boxGeo, .3, h * 1.15, b.w * 1.45, b.l - .15, .45, b.ox, .12);
+    }
+    v.turret.add(bg); v.parts.push(bg); v.holders.push(holder);
+  });
+  const cap = new THREE.Mesh(cylGeo, v.capMat); cap.scale.set(.58, .28, .58); cap.position.y = .8; v.turret.add(cap); v.parts.push(cap);
+  const co = hull(v.turret, cylGeo, .58, .28, .58, 0, .8, 0, .08); v.parts.push(co);
+}
+function disposeTank(v) { v.bodyMat.dispose(); v.hatchMat.dispose(); v.detailMat.dispose(); v.barrelMat.dispose(); v.capMat.dispose(); for (const r of v.rings || []) r.material.dispose(); }
+
+/* formas */
+const shapeViews = new Map();
+const SH_COL = { sq: 0xffd75a, tri: 0xff6f7d, pent: 0x7a86ff, elite: 0x32dfff };
+function makeShapeView(s) {
+  const g = new THREE.Group(), mat = new THREE.MeshLambertMaterial({ color: SH_COL[s.sk] });
+  let geo, sx, sy, sz;
+  if (s.sk === 'sq') { geo = boxGeo; sx = sz = s.r * 1.4; sy = s.r * 1.0; }
+  else if (s.sk === 'tri') { geo = triGeo; sx = sz = s.r; sy = s.r * .85; }
+  else if (s.sk === 'pent') { geo = pentGeo; sx = sz = s.r; sy = s.r * .85; }
+  else { geo = eliteGeo; sx = sz = s.r * 1.2; sy = s.r * 1.12; }
+  const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.y = sy / 2; g.add(m);
+  hull(g, geo, sx, sy, sz, 0, sy / 2, 0, s.r * .16);
+  const bl = new THREE.Mesh(blobGeo, blobMat); bl.rotation.x = -Math.PI / 2; bl.position.y = .05; bl.scale.setScalar(s.r * 1.3); g.add(bl);
+  return { g, mat, sy };
+}
+
+/* balas y partículas (instanciadas) */
+const MAXB = 900;
+const bulMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshLambertMaterial({ color: 0xffffff }), MAXB);
+const bulOut = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), outMat, MAXB);
+bulMesh.frustumCulled = bulOut.frustumCulled = false; bulMesh.count = bulOut.count = 0;
+bulMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); bulOut.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(bulMesh, bulOut);
+const MAXP = 320;
+const pMesh = new THREE.InstancedMesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), MAXP);
+pMesh.frustumCulled = false; pMesh.count = 0; pMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(pMesh);
+const dummy = new THREE.Object3D(), colCache = new Map();
+const colOf = s => { let c = colCache.get(s); if (!c) { c = new THREE.Color(s); colCache.set(s, c); } return c; };
+let particles = [];
+function burst(x, y, col, n, size, speed) {
+  for (let i = 0; i < n && particles.length < MAXP; i++) {
+    const a = Math.random() * 6.283, sp = speed * (.35 + Math.random() * .8);
+    particles.push({ x, y: 14 + Math.random() * 12, z: y, vx: Math.cos(a) * sp, vy: 120 + Math.random() * 220, vz: Math.sin(a) * sp, life: .7 + Math.random() * .4, max: 1, s: size * (.6 + Math.random() * .7), c: colOf(col) });
+  }
+}
+
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  W = glCv.clientWidth; H = glCv.clientHeight; DPR = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(DPR); renderer.setSize(W, H, false);
+  ovCv.width = Math.round(W * DPR); ovCv.height = Math.round(H * DPR);
+  camera.aspect = W / H; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+/* ================= 4. ENTRADA ================= */
+let mode = 'menu', view = 'front', pitch = .55, cameraPitch = .55, cameraYaw = -Math.PI / 2, cameraYawTarget = -Math.PI / 2;
+let cameraDragging = false, orbitX = 0, orbitY = 0, cameraTouchMode = false;
+function addCameraYaw(delta) { cameraYawTarget = Math.atan2(Math.sin(cameraYawTarget + delta), Math.cos(cameraYawTarget + delta)); }
+const keys = new Set(); let mouseX = 0, mouseY = 0, mouseDown = false, autoFire = false;
+const touch = { mv: null, aim: null };
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+const typing = () => document.activeElement && document.activeElement.tagName === 'INPUT';
+
+window.addEventListener('keydown', e => {
+  if (typing()) { if (e.key === 'Enter') startGame(); return; }
+  const k = e.key.toLowerCase();
+  if (mode === 'play') {
+    if (k >= '1' && k <= '8') { net.upgrade(+k - 1); return; }
+    if (k === 'e') { toggleAutoFire(); return; }
+    if (k === 'v') { view = view === 'front' ? 'top' : 'front'; feed(view === 'front' ? 'Cámara trasera' : 'Cámara elevada'); return; }
+    if (k === ' ' || k.startsWith('arrow')) e.preventDefault();
+  }
+  keys.add(k);
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => { keys.clear(); mouseDown = false; cameraDragging = false; });
+glCv.addEventListener('contextmenu', e => e.preventDefault());
+glCv.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch') {
+    const left = e.clientX < W / 2, p = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
+    if (left && !touch.mv) touch.mv = p; else if (!left && !touch.aim) touch.aim = p;
+    glCv.setPointerCapture(e.pointerId); return;
+  }
+  if (e.button === 2) { cameraDragging = true; orbitX = e.clientX; orbitY = e.clientY; glCv.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+  mouseX = e.clientX; mouseY = e.clientY; if (e.button === 0) mouseDown = true;
+});
+glCv.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') {
+    for (const k of ['mv', 'aim']) if (touch[k] && touch[k].id === e.pointerId) {
+      if (k === 'aim' && cameraTouchMode) {
+        const dx = e.clientX - touch[k].x, dy = e.clientY - touch[k].y;
+        addCameraYaw(-dx * .014); cameraPitch = clamp(cameraPitch + dy * .006, .35, .95);
+        touch[k].ox = e.clientX; touch[k].oy = e.clientY;
+      }
+      touch[k].x = e.clientX; touch[k].y = e.clientY;
+    }
+    return;
+  }
+  if (cameraDragging) {
+    const dx = e.clientX - orbitX, dy = e.clientY - orbitY;
+    addCameraYaw(-dx * .014); cameraPitch = clamp(cameraPitch + dy * .006, .35, .95);
+    orbitX = e.clientX; orbitY = e.clientY; return;
+  }
+  mouseX = e.clientX; mouseY = e.clientY;
+});
+const up = e => {
+  if (e.pointerType === 'touch') { for (const k of ['mv', 'aim']) if (touch[k] && touch[k].id === e.pointerId) touch[k] = null; return; }
+  if (e.button === 0) mouseDown = false;
+  if (e.button === 2 || e.type === 'pointercancel') cameraDragging = false;
+};
+window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+glCv.addEventListener('wheel', e => { e.preventDefault(); userZoom = clamp(userZoom * Math.exp(e.deltaY * .001), .65, 2.4); }, { passive: false });
+
+function gatherInput() {
+  const me = net.me(); if (!me) return;
+  let screenX = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
+  let screenY = (keys.has('s') ? 1 : 0) - (keys.has('w') ? 1 : 0);
+  let aim = me.input.aim, fire = mouseDown || keys.has(' ') || autoFire;
+  const fk = 1 / Math.sin(pitch);
+  if (touch.mv) { const dx = touch.mv.x - touch.mv.ox, dy = touch.mv.y - touch.mv.oy, d = Math.hypot(dx, dy); if (d > 8) { const scale = Math.min(1, d / 60), wy = dy * fk, wd = Math.hypot(dx, wy) || 1; screenX = dx / wd * scale; screenY = wy / wd * scale; } }
+  const c = Math.cos(cameraYaw), s = Math.sin(cameraYaw);
+  const mx = screenX * c + screenY * s, my = -screenX * s + screenY * c;
+  if (touch.aim && !cameraTouchMode) {
+    const dx = touch.aim.x - touch.aim.ox, dy = touch.aim.y - touch.aim.oy, d = Math.hypot(dx, dy);
+    if (d > 14) { const sx = dx, sy = dy * fk; aim = Math.atan2(-sx * s + sy * c, sx * c + sy * s); fire = true; }
+  } else if (!cameraTouchMode && !cameraDragging && (!touch.mv || mouseX || mouseY)) {
+    ndc.set(mouseX / W * 2 - 1, -(mouseY / H) * 2 + 1); ray.setFromCamera(ndc, camera);
+    const o = ray.ray.origin, d = ray.ray.direction, tt = (14 - o.y) / d.y;
+    if (tt > 0 && !(touch.mv && !mouseDown && mouseX === 0)) aim = Math.atan2(o.z + d.z * tt - me.y, o.x + d.x * tt - me.x);
+  }
+  net.sendInput({ mx, my, aim, fire });
+}
+
+/* ================= 5. HUD ================= */
+const el = { hud: $('hud'), menu: $('menu'), dead: $('dead'), nameIn: $('nameIn'), board: $('boardList'), stats: $('stats'), statRows: $('statRows'), autoShotBtn: $('autoShotBtn'), camModeBtn: $('camModeBtn'), ptsN: $('ptsN'),
+  classBox: $('classBox'), classBtns: $('classBtns'), classTitle: $('classTitle'), gemPanel: $('gemPanel'), gemsCount: $('gemsCount'), chestBtn: $('chestBtn'), chestModal: $('chestModal'), chestWallet: $('chestWallet'), chestChoices: $('chestChoices'), chestResult: $('chestResult'), tankIndexBtn: $('tankIndexBtn'), tankIndexMenuBtn: $('tankIndexMenuBtn'), tankIndexModal: $('tankIndexModal'), tankIndexSearch: $('tankIndexSearch'), tankIndexList: $('tankIndexList'), tankIndexCount: $('tankIndexCount'), menuRouletteBtn: $('menuRouletteBtn'), rouletteMenuStatus: $('rouletteMenuStatus'), rouletteModal: $('rouletteModal'), rouletteWheel: $('rouletteWheel'), rouletteResult: $('rouletteResult'), spinBtn: $('spinBtn'), xpFill: $('xpFill'), xpLabel: $('xpLabel'), pName: $('pName'), pScore: $('pScore'), feed: $('feed'), mini: $('mini') };
+const mini = el.mini.getContext('2d');
+try { el.nameIn.value = localStorage.getItem('tanquex-name') || ''; } catch (e) {}
+const fmtS = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(Math.floor(n));
+const fmtT = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+const rows = STATS.map((s, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'stat';
+  b.innerHTML = '<span class="k">' + (i + 1) + '</span><span class="n">' + s.n + '</span><span class="pips">' + '<i></i>'.repeat(STAT_MAX) + '</span>';
+  b.addEventListener('click', () => net.upgrade(i)); el.statRows.appendChild(b);
+  return { b, pips: b.querySelectorAll('.pips i') };
+});
+let classKey = '';
+function updateAutoShotButton() { el.autoShotBtn.classList.toggle('active', autoFire); el.autoShotBtn.textContent = autoFire ? 'AUTOSHOT: ON' : 'AUTOSHOT: OFF'; el.autoShotBtn.setAttribute('aria-pressed', String(autoFire)); }
+function toggleAutoFire() { autoFire = !autoFire; updateAutoShotButton(); feed(autoFire ? 'Disparo automático activado' : 'Disparo automático desactivado'); }
+el.autoShotBtn.addEventListener('click', toggleAutoFire);
+function updateCameraModeButton() { el.camModeBtn.classList.toggle('active', cameraTouchMode); el.camModeBtn.textContent = cameraTouchMode ? 'CAM: ON' : 'CAM: OFF'; el.camModeBtn.setAttribute('aria-pressed', String(cameraTouchMode)); }
+el.camModeBtn.addEventListener('click', () => { cameraTouchMode = !cameraTouchMode; updateCameraModeButton(); });
+const wheelLabels = ['10K XP','3 PUNTOS','FÉNIX','5 PUNTOS','3K XP','2 PUNTOS','5K XP','5 PUNTOS'];
+wheelLabels.forEach((label, i) => {
+  const span = document.createElement('span'); span.className = 'wheel-label'; span.textContent = label;
+  const a = (i * 45 + 22.5) * Math.PI / 180, r = 88;
+  span.style.left = 'calc(50% + ' + (Math.sin(a) * r) + 'px)';
+  span.style.top = 'calc(50% - ' + (Math.cos(a) * r) + 'px)';
+  span.style.transform = 'translate(-50%,-50%)'; el.rouletteWheel.appendChild(span);
+});
+let rouletteBusy = false;
+function closeRoulette() { if (!rouletteBusy) el.rouletteModal.hidden = true; }
+function updateMenuRouletteStatus() {
+  el.menuRouletteBtn.disabled = menuRouletteUsed;
+  el.menuRouletteBtn.textContent = menuRouletteUsed ? 'RULETA YA UTILIZADA' : 'RULETA EXCLUSIVA';
+  el.rouletteMenuStatus.textContent = fenixUnlocked
+    ? 'Fénix desbloqueado: aparecerá entre tus evoluciones al llegar al nivel 110.'
+    : menuRouletteUsed ? 'Giro utilizado. El Fénix no se desbloqueó en esta tirada.'
+    : 'Un giro disponible. El Fénix es un premio exclusivo.';
+}
+updateMenuRouletteStatus();
+el.menuRouletteBtn.addEventListener('click', () => { if (!menuRouletteUsed) el.rouletteModal.hidden = false; });
+$('rouletteClose').addEventListener('click', closeRoulette);
+el.rouletteModal.addEventListener('click', e => { if (e.target === el.rouletteModal) closeRoulette(); });
+function drawChestChoices(me) {
+  el.chestChoices.innerHTML = '';
+  CHESTS.forEach((chest, tier) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chest-option';
+    const opened = me.chestOpened[tier], levelOk = me.level >= chest.level, gemsOk = me.gems >= chest.cost;
+    const status = opened ? 'ABIERTO ESTA PARTIDA' : !levelOk ? 'Se desbloquea al nivel ' + chest.level : !gemsOk ? 'Te faltan ' + (chest.cost - me.gems) + ' gemas' : 'Abrir · ' + chest.cost + ' gemas';
+    b.innerHTML = '<strong>' + chest.name + '</strong>\nNivel ' + chest.level + '+ · Mejora exclusiva\n' + status;
+    b.disabled = opened || !levelOk || !gemsOk;
+    b.addEventListener('click', () => {
+      const result = net.openChest(tier);
+      if (!result.ok) { el.chestResult.textContent = result.reason === 'gems' ? 'No tienes gemas suficientes.' : result.reason === 'level' ? 'Aún no tienes el nivel requerido.' : 'Ese cofre ya se abrió esta partida.'; return; }
+      profileGems = result.gems;
+      try { localStorage.setItem('tanquex-gems', String(profileGems)); } catch (e) {}
+      el.gemsCount.textContent = profileGems; el.chestWallet.textContent = profileGems;
+      el.chestResult.textContent = result.reward.n + ': ' + result.reward.d;
+      feed('Cofre: ' + result.reward.n); drawChestChoices(net.me());
+    });
+    el.chestChoices.appendChild(b);
+  });
+}
+function openChestShop() {
+  const me = net.me(); if (!me) return;
+  el.chestWallet.textContent = me.gems; el.chestResult.textContent = 'Las gemas se conservan entre partidas.';
+  drawChestChoices(me); el.chestModal.hidden = false;
+}
+function closeChestShop() { el.chestModal.hidden = true; }
+el.chestBtn.addEventListener('click', openChestShop);
+$('chestClose').addEventListener('click', closeChestShop);
+el.chestModal.addEventListener('click', e => { if (e.target === el.chestModal) closeChestShop(); });
+const tankIndexEntries = [
+  ...Object.entries(CLASSES).map(([id, info]) => {
+    const level = info.tier === 0 ? 1 : TIER_LEVELS[info.tier - 1];
+    const source = info.from ? 'Procede de: ' + CLASSES[info.from].n : 'Tanque inicial';
+    const desc = info.from ? 'Clase derivada · disponible desde nivel ' + level : 'Disponible al empezar la partida.';
+    return { id, name: info.n, kind: 'CLASE', level, source, desc, search: [info.n, source, desc].join(' ').toLocaleLowerCase('es') };
+  }),
+  ...Object.entries(ASC).map(([id, info]) => {
+    const stage = id === 'fenix' ? 2 : ASC_STAGES.findIndex(group => group.includes(id)), level = TIER_LEVELS[3 + stage];
+    const source = id === 'fenix' ? 'Procede de: ruleta exclusiva del menú (requiere desbloqueo)' : stage === 0 ? 'Procede de: cualquier clase avanzada (nivel 60)' : 'Procede de: cualquier evolución de nivel ' + TIER_LEVELS[2 + stage];
+    const desc = info.d + ' · disponible en nivel ' + level;
+    return { id, name: info.n, kind: id === 'fenix' ? 'EXCLUSIVO' : 'EVOLUCIÓN', level, source, desc, search: [info.n, source, desc].join(' ').toLocaleLowerCase('es') };
+  })
+];
+function renderTankIndex() {
+  const query = el.tankIndexSearch.value.trim().toLocaleLowerCase('es');
+  const matches = tankIndexEntries.filter(item => !query || item.search.includes(query));
+  el.tankIndexCount.textContent = matches.length + ' de ' + tankIndexEntries.length + ' tanques y evoluciones';
+  el.tankIndexList.innerHTML = '';
+  if (!matches.length) { el.tankIndexList.innerHTML = '<div class="tank-index-empty">No se encontraron tanques con esa búsqueda.</div>'; return; }
+  for (const item of matches) {
+    const card = document.createElement('article'); card.className = 'tank-index-entry';
+    const head = document.createElement('div'); head.className = 'tank-index-head';
+    const name = document.createElement('strong'); name.textContent = item.name;
+    const tag = document.createElement('span'); tag.className = 'tank-index-tag'; tag.textContent = item.kind + ' · NIVEL ' + item.level;
+    const source = document.createElement('div'); source.className = 'tank-index-source'; source.textContent = item.source;
+    const desc = document.createElement('div'); desc.className = 'tank-index-desc'; desc.textContent = item.desc;
+    head.append(name, tag); card.append(head, source, desc); el.tankIndexList.appendChild(card);
+  }
+}
+function openTankIndex() { renderTankIndex(); el.tankIndexModal.hidden = false; el.tankIndexSearch.focus(); }
+function closeTankIndex() { el.tankIndexModal.hidden = true; }
+el.tankIndexBtn.addEventListener('click', openTankIndex);
+el.tankIndexMenuBtn.addEventListener('click', openTankIndex);
+el.tankIndexSearch.addEventListener('input', renderTankIndex);
+$('tankIndexClose').addEventListener('click', closeTankIndex);
+el.tankIndexModal.addEventListener('click', e => { if (e.target === el.tankIndexModal) closeTankIndex(); });
+el.spinBtn.addEventListener('click', () => {
+  if (rouletteBusy) return;
+  if (menuRouletteUsed) return;
+  const rewards = [
+    { type: 'score', amount: 10000, title: '10.000 XP para tu próxima partida' },
+    { type: 'points', amount: 3, title: '3 puntos extra al empezar' },
+    { type: 'fenix', title: '¡Fénix desbloqueado! Podrás elegirlo al nivel 110' },
+    { type: 'points', amount: 5, title: '5 puntos extra al empezar' },
+    { type: 'score', amount: 3000, title: '3.000 XP para tu próxima partida' },
+    { type: 'points', amount: 2, title: '2 puntos extra al empezar' },
+    { type: 'score', amount: 5000, title: '5.000 XP para tu próxima partida' },
+    { type: 'points', amount: 5, title: '5 puntos extra al empezar' }
+  ];
+  const index = Math.floor(Math.random() * rewards.length), prize = Object.assign({ index }, rewards[index]);
+  menuRouletteUsed = true;
+  try { localStorage.setItem('tanquex-menu-roulette-used', 'true'); } catch (e) {}
+  if (prize.type === 'fenix') {
+    fenixUnlocked = true; sim.fenixUnlocked = true;
+    try { localStorage.setItem('tanquex-fenix-unlocked', 'true'); } catch (e) {}
+  } else if (prize.type === 'points') {
+    startBonusPoints += prize.amount;
+    try { localStorage.setItem('tanquex-roulette-points', String(startBonusPoints)); } catch (e) {}
+  } else if (prize.type === 'score') {
+    startBonusScore += prize.amount;
+    try { localStorage.setItem('tanquex-roulette-score', String(startBonusScore)); } catch (e) {}
+  }
+  updateMenuRouletteStatus();
+  rouletteBusy = true; el.spinBtn.disabled = true; el.spinBtn.textContent = 'GIRANDO…';
+  el.rouletteResult.textContent = 'La suerte está echada…';
+  const target = (360 - (prize.index * 45 + 22.5) + 360) % 360;
+  el.rouletteWheel.style.transform = 'rotate(' + (360 * 8 + target) + 'deg)';
+  window.setTimeout(() => {
+    el.rouletteResult.textContent = prize.title;
+    el.rouletteMenuStatus.textContent = fenixUnlocked ? 'Fénix desbloqueado: aparecerá entre tus evoluciones al llegar al nivel 110.' : 'Premio guardado para tu próxima partida.';
+    rouletteBusy = false; el.spinBtn.textContent = 'PREMIO CONSEGUIDO';
+  }, 4650);
+});
+function feed(msg) {
+  const d = document.createElement('div'); d.textContent = msg; el.feed.appendChild(d);
+  while (el.feed.children.length > 4) el.feed.removeChild(el.feed.firstChild);
+  setTimeout(() => { if (d.parentNode) d.parentNode.removeChild(d); }, 3700);
+}
+let inXpZone = false;
+function updateHUD(me) {
+  const nowInZone = me.x * me.x + me.y * me.y <= XP_ZONE_RADIUS * XP_ZONE_RADIUS;
+  if (nowInZone && !inXpZone) feed('Núcleo central: destruye los bloques élite para ganar XP extra');
+  inXpZone = nowInZone;
+  el.pName.textContent = me.name; el.pScore.textContent = fmtS(me.score);
+  el.gemsCount.textContent = me.gems;
+  const lo = scoreFor(me.level), hi = scoreFor(Math.min(MAX_LEVEL, me.level + 1));
+  el.xpFill.style.width = (me.level >= MAX_LEVEL ? 100 : (me.score - lo) / (hi - lo) * 100) + '%';
+  el.xpLabel.textContent = 'Nivel ' + me.level + ' · ' + CLASSES[me.cls].n + me.asc.map(a => ' · ' + ASC[a].n).join('');
+  el.ptsN.textContent = me.pts; el.stats.classList.toggle('idle', me.pts <= 0);
+  rows.forEach((r, i) => {
+    r.b.disabled = me.pts <= 0 || me.st[i] >= STAT_MAX;
+    r.pips.forEach((p, j) => { p.style.background = j < me.st[i] ? STATS[i].c : ''; });
+  });
+  updateAutoShotButton();
+  const pend = sim.pending(me), key = pend.join(',');
+  if (key !== classKey) {
+    classKey = key; el.classBox.hidden = !pend.length; el.classBtns.innerHTML = '';
+    el.classTitle.textContent = pend.length && ASC[pend[0]] ? 'Elige una evolución' : 'Elige tu clase';
+    pend.forEach(c => {
+      const info = CLASSES[c] || ASC[c], b = document.createElement('button'); b.type = 'button'; b.className = 'cbtn';
+      const n = document.createElement('b'); n.textContent = info.n; b.appendChild(n);
+      if (info.d) { const s = document.createElement('small'); s.textContent = info.d; b.appendChild(s); }
+      b.addEventListener('click', () => net.chooseClass(c)); el.classBtns.appendChild(b);
+    });
+  }
+}
+let boardT = 0;
+function updateBoard(dt) {
+  boardT -= dt; if (boardT > 0) return; boardT = .4;
+  const list = [...sim.tanks.values()].sort((a, b) => b.score - a.score).slice(0, 8);
+  el.board.innerHTML = '';
+  list.forEach(t => { const li = document.createElement('li'); if (t.id === net.id) li.className = 'me'; const a = document.createElement('span'), b = document.createElement('span'); a.textContent = t.name; b.textContent = fmtS(t.score); li.append(a, b); el.board.appendChild(li); });
+}
+function drawMini() {
+  const s = el.mini.width; mini.clearRect(0, 0, s, s); const k = s / (HALF * 2);
+  mini.fillStyle = 'rgba(11,19,36,.78)'; mini.fillRect(6, 6, s - 12, s - 12);
+  mini.strokeStyle = 'rgba(150,190,230,.16)'; mini.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { const p = 6 + (s - 12) * i / 4; mini.beginPath(); mini.moveTo(p, 6); mini.lineTo(p, s - 6); mini.moveTo(6, p); mini.lineTo(s - 6, p); mini.stroke(); }
+  mini.beginPath(); mini.arc(s / 2, s / 2, XP_ZONE_RADIUS * k, 0, 6.283); mini.fillStyle = 'rgba(50,205,232,.17)'; mini.fill();
+  mini.strokeStyle = 'rgba(75,220,242,.76)'; mini.lineWidth = 2; mini.stroke();
+  mini.strokeStyle = 'rgba(150,190,230,.58)'; mini.lineWidth = 2; mini.strokeRect(6, 6, s - 12, s - 12);
+  for (const w of sim.walls) {
+    mini.fillStyle = 'rgba(125,148,176,.94)';
+    mini.fillRect((w.x - w.w / 2 + HALF) * k, (w.y - w.h / 2 + HALF) * k, Math.max(1, w.w * k), Math.max(1, w.h * k));
+  }
+  for (const sh of sim.shapes) if (sh.sk === 'elite') { mini.fillStyle = '#32dfff'; mini.fillRect((sh.x + HALF) * k - 3, (sh.y + HALF) * k - 3, 6, 6); } else if (sh.sk === 'pent') { mini.fillStyle = '#7a86ff'; mini.fillRect((sh.x + HALF) * k - 2, (sh.y + HALF) * k - 2, 4, 4); }
+  for (const t of sim.tanks.values()) {
+    const x = (t.x + HALF) * k, y = (t.y + HALF) * k;
+    if (t.id === net.id) { mini.beginPath(); mini.arc(x, y, 9, 0, 6.283); mini.fillStyle = 'rgba(79,224,255,.3)'; mini.fill(); }
+    mini.fillStyle = t.id === net.id ? '#ffffff' : t.col; mini.beginPath(); mini.arc(x, y, t.id === net.id ? 5 : 3.5, 0, 6.283); mini.fill();
+  }
+  for (const player of window.TanquexMultiplayer?.getPlayers() || []) {
+    const state = player.state || {}; if (player.active === false || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) continue;
+    mini.beginPath(); mini.arc((Number(state.x) + HALF) * k, (Number(state.y) + HALF) * k, 4.5, 0, 6.283);
+    mini.fillStyle = multiplayerColor(player.id); mini.fill();
+  }
+}
+
+/* ================= 6. FLUJO ================= */
+function startGame() {
+  const name = (el.nameIn.value || '').trim().slice(0, 14) || 'Tanque';
+  try { localStorage.setItem('tanquex-name', name); } catch (e) {}
+  window.TANQUE_PLAYER_NAME = name;
+  net.join(name);
+  const me = net.me();
+  if (me) me.gems = profileGems;
+  if (me && startBonusPoints) {
+    me.pts += startBonusPoints; startBonusPoints = 0;
+    try { localStorage.removeItem('tanquex-roulette-points'); } catch (e) {}
+  }
+  if (me && startBonusScore) {
+    const bonus = startBonusScore; startBonusScore = 0; net.sim.addScore(me, bonus, true);
+    try { localStorage.removeItem('tanquex-roulette-score'); } catch (e) {}
+  }
+  if (me) window.TanquexMultiplayer?.respawn({ x: me.x, y: me.y, angle: me.ang, hp: me.hp, maxHp: me.maxHp, regen: me.regen, damage: me.bDmg, reload: me.reloadBase, range: me.bSpeed * 2.3, inv: me.inv, level: me.level, score: me.score, classId: me.cls, size: me.r, name: me.name, input: me.input });
+  mode = 'play'; autoFire = false; classKey = '?'; el.rouletteModal.hidden = true;
+  cameraYaw = cameraYawTarget = -Math.PI / 2; cameraPitch = .55; cameraTouchMode = false; userZoom = 1; inXpZone = false; updateCameraModeButton();
+  updateAutoShotButton();
+  el.menu.hidden = true; el.dead.hidden = true; el.hud.hidden = false; glCv.focus();
+}
+$('playBtn').addEventListener('click', startGame);
+$('againBtn').addEventListener('click', startGame);
+
+function handleEvents() {
+  for (const e of net.drain()) {
+    if (e.t === 'shape') burst(e.x, e.y, '#' + SH_COL[e.sk].toString(16).padStart(6, '0'), e.sk === 'elite' ? 26 : e.sk === 'pent' ? 16 : 8, e.sk === 'elite' ? 12 : e.sk === 'pent' ? 9 : 6, e.sk === 'elite' ? 320 : 220);
+    else if (e.t === 'boom') burst(e.x, e.y, e.col, 26, 8, 320);
+    else if (e.t === 'gain' && e.id === net.id) floats.push({ txt: '+' + Math.floor(e.amt), t: 1 });
+    else if (e.t === 'level' && e.id === net.id) feed('¡Nivel ' + e.level + '!');
+    else if (e.t === 'gems' && e.id === net.id) { profileGems = e.total; el.gemsCount.textContent = profileGems; try { localStorage.setItem('tanquex-gems', String(profileGems)); } catch (e) {} feed('+' + e.amount + ' gemas · nivel ' + e.victimLevel); }
+    else if (e.t === 'chest' && e.id === net.id) feed('Mejora equipada: ' + e.reward);
+    else if (e.t === 'kill' && e.kid === net.id) feed('Has destruido a ' + e.victim);
+  }
+}
+const floats = [];
+window.addEventListener('tanquex:connected', () => feed('Conectado al servidor multijugador'));
+window.addEventListener('tanquex:disconnected', () => feed('Conexión perdida; intentando reconectar…'));
+window.addEventListener('tanquex:playerJoined', e => { if (e.detail && e.detail.name) feed(e.detail.name + ' se unió a la arena'); });
+window.addEventListener('tanquex:playerLeft', () => feed('Un jugador salió de la arena'));
+window.addEventListener('tanquex:pvpHit', event => {
+  const me = net.me(), hit = event.detail || {}; if (!me) return;
+  me.hp = Math.max(0, Math.min(me.hp, Number(hit.hp) || 0)); me.lastHit = sim.t; me.hitT = .12; me.inv = 0;
+  feed((hit.attacker?.name || 'Otro tanque') + ' te ha alcanzado');
+});
+window.addEventListener('tanquex:pvpDeath', event => {
+  const me = net.me(), death = event.detail || {}; if (!me) return;
+  me.hp = 0; me.la = death.killerId || 'pvp'; net.sim.cleanup();
+  if (sim.deaths[net.id]) sim.deaths[net.id].killer = death.killerName || 'Otro jugador';
+});
+window.addEventListener('tanquex:pvpDamage', event => {
+  const hit = event.detail || {}; if (hit.victimName) feed('Impacto a ' + hit.victimName + ' · ' + Math.round(hit.damage || 0) + ' daño');
+});
+window.addEventListener('tanquex:pvpKill', event => {
+  const kill = event.detail || {}, me = net.me(); if (!me) return;
+  const xp = Math.max(0, Math.round(Number(kill.xp) || 0)); if (xp) net.sim.addScore(me, xp);
+  const gems = Math.max(0, Math.floor(Number(kill.gems) || 0));
+  if (gems) { me.gems = (me.gems || 0) + gems; net.sim.events.push({ t: 'gems', id: net.id, amount: gems, total: me.gems, victimLevel: kill.victimLevel || 1 }); }
+  net.sim.events.push({ t: 'kill', vid: kill.victimId, kid: net.id, victim: kill.victimName || 'Jugador' });
+});
+
+/* ================= 7. BUCLE ================= */
+const v3 = new THREE.Vector3();
+function toScreen(x, y, z) { v3.set(x, y, z).project(camera); return v3.z < 1 ? { x: (v3.x * .5 + .5) * W, y: (-v3.y * .5 + .5) * H } : null; }
+let camZoom = 1, userZoom = 1, menuT = 0, last = performance.now(), frameN = 0, multiplayerSendTimer = 0;
+
+function frame(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now; frameN++;
+  if (mode === 'play') {
+    gatherInput();
+    if (!net.me()) {
+      window.TanquexMultiplayer?.setInactive();
+      mode = 'dead'; const d = sim.deaths[net.id] || { name: '', score: 0, level: 1, kills: 0, time: 0, killer: 'La arena' };
+      $('dKiller').textContent = d.killer; $('dScore').textContent = fmtS(d.score); $('dLevel').textContent = d.level; $('dKills').textContent = d.kills; $('dTime').textContent = fmtT(d.time);
+      el.dead.hidden = false; touch.mv = touch.aim = null; mouseDown = false;
+    }
+  }
+  const alpha = net.update(dt);
+  handleEvents();
+  const me = net.me();
+  if (mode === 'play' && me) {
+    multiplayerSendTimer += dt;
+    if (multiplayerSendTimer >= .05) {
+      multiplayerSendTimer = 0;
+      window.TanquexMultiplayer?.sendState({ x: me.x, y: me.y, angle: me.ang, hp: me.hp, maxHp: me.maxHp, regen: me.regen, damage: me.bDmg, reload: me.reloadBase, range: me.bSpeed * 2.3, inv: me.inv, level: me.level, score: me.score, classId: me.cls, size: me.r, name: me.name, input: me.input });
+    }
+  } else multiplayerSendTimer = 0;
+
+  const yawInput = (keys.has('arrowright') || keys.has('r') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
+  if (yawInput) addCameraYaw(yawInput * 4.8 * dt);
+  const pitchInput = (keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 1 : 0);
+  if (pitchInput) cameraPitch = clamp(cameraPitch + pitchInput * 1.25 * dt, .35, .95);
+  const yawDelta = Math.atan2(Math.sin(cameraYawTarget - cameraYaw), Math.cos(cameraYawTarget - cameraYaw));
+  cameraYaw += yawDelta * (1 - Math.exp(-dt * 14));
+
+  // cámara
+  let cx, cz, dist;
+  const aspect = W / H, base = (view === 'front' ? 560 : 880) * clamp(1.3 / aspect, 1, 1.9);
+  if (me) {
+    cx = me.px + (me.x - me.px) * alpha; cz = me.py + (me.y - me.py) * alpha;
+    const target = clamp(me.r / 25, 1, 3.2) * (CLASSES[me.cls].fov || 1);
+    camZoom += (target - camZoom) * (1 - Math.exp(-dt * 3));
+  } else { menuT += dt * .06; cx = Math.cos(menuT) * 700; cz = Math.sin(menuT) * 700; camZoom += (1.5 - camZoom) * (1 - Math.exp(-dt * 2)); }
+  dist = base * camZoom * userZoom;
+  pitch += ((view === 'front' ? cameraPitch : 1.0) - pitch) * (1 - Math.exp(-dt * 5));
+  const ahead = view === 'front' ? dist * .17 : 0, sy = Math.sin(cameraYaw), cy = Math.cos(cameraYaw);
+  const horizontal = dist * Math.cos(pitch);
+  // Órbita manual independiente de la mira; el punto de enfoque se adelanta para la composición trasera.
+  camera.position.set(cx + sy * horizontal, dist * Math.sin(pitch), cz + cy * horizontal);
+  camera.lookAt(cx - sy * ahead, 0, cz - cy * ahead);
+  scene.fog.near = dist * 2.4; scene.fog.far = dist * 6.5;
+  camera.updateMatrixWorld();
+
+  // Muros sólidos: la geometría sigue la misma distribución que sus colisiones.
+  for (const w of sim.walls) if (!wallViews.has(w.id)) { const v = makeWallView(w); wallViews.set(w.id, v); scene.add(v); }
+
+  // tanques
+  const seenT = new Set();
+  for (const t of sim.tanks.values()) {
+    let v = tankViews.get(t.id); if (!v) { v = makeTankView(t); tankViews.set(t.id, v); scene.add(v.g); }
+    if (v.cls !== t.sig) buildBarrels(v, t);
+    v.g.position.set(t.px + (t.x - t.px) * alpha, 0, t.py + (t.y - t.py) * alpha); v.g.scale.setScalar(t.r);
+    v.turret.rotation.y = -t.ang;
+    v.holders.forEach((h, i) => { h.position.x = -Math.max(0, 1 - (sim.t - t.shotAt[i]) / .1) * .3; });
+    const f = t.hitT / .12 * .55; v.bodyMat.emissive.setRGB(f, f, f);
+    v.bodyMat.opacity = t.inv > 0 ? .55 + .25 * Math.sin(now / 90) : 1;
+    seenT.add(t.id);
+  }
+  for (const [id, v] of tankViews) if (!seenT.has(id)) { scene.remove(v.g); disposeTank(v); tankViews.delete(id); }
+
+  // Jugadores remotos: representación visual interpolada; no se insertan en la física local.
+  const remotePlayers = window.TanquexMultiplayer?.getPlayers() || [];
+  const seenRemote = new Set();
+  for (const player of remotePlayers) {
+    const state = player.state || {};
+    if (player.active === false || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) continue;
+    const classId = CLASSES[state.classId] ? state.classId : 'basic';
+    const classInfo = CLASSES[classId], col = multiplayerColor(player.id);
+    const fakeTank = { col, sig: classId, asc: [], bar: classInfo.b, shotAt: Array(classInfo.b.length).fill(-9) };
+    let v = remoteTankViews.get(player.id);
+    if (!v) {
+      v = makeTankView(fakeTank); buildBarrels(v, fakeTank); v.remoteClass = classId;
+      v.netX = Number(state.x); v.netY = Number(state.y); remoteTankViews.set(player.id, v); scene.add(v.g);
+    } else if (v.remoteClass !== classId) {
+      buildBarrels(v, fakeTank); v.remoteClass = classId;
+    }
+    const tx = clamp(Number(state.x), -HALF + 50, HALF - 50), ty = clamp(Number(state.y), -HALF + 50, HALF - 50);
+    const smooth = 1 - Math.exp(-dt * 14); v.netX += (tx - v.netX) * smooth; v.netY += (ty - v.netY) * smooth;
+    v.g.position.set(v.netX, 0, v.netY); v.g.scale.setScalar(clamp(Number(state.size) || 25, 15, 120));
+    v.turret.rotation.y = -Number(state.angle || 0); v.bodyMat.opacity = 1;
+    seenRemote.add(player.id);
+  }
+  for (const [id, v] of remoteTankViews) if (!seenRemote.has(id)) { scene.remove(v.g); disposeTank(v); remoteTankViews.delete(id); }
+
+  // formas
+  const seenS = new Set();
+  for (const s of sim.shapes) {
+    let v = shapeViews.get(s.id); if (!v) { v = makeShapeView(s); shapeViews.set(s.id, v); scene.add(v.g); }
+    v.g.position.set(s.px + (s.x - s.px) * alpha, 2 + 2 * Math.sin(now / 700 + s.id), s.py + (s.y - s.py) * alpha); v.g.rotation.y = -s.rot;
+    const f = s.hitT / .12 * .6; v.mat.emissive.setRGB(f, f, f); seenS.add(s.id);
+  }
+  for (const [id, v] of shapeViews) if (!seenS.has(id)) { scene.remove(v.g); v.mat.dispose(); shapeViews.delete(id); }
+
+  // balas
+  const nb = Math.min(sim.bullets.length, MAXB);
+  for (let i = 0; i < nb; i++) {
+    const b = sim.bullets[i];
+    dummy.position.set(b.px + (b.x - b.px) * alpha, 16, b.py + (b.y - b.py) * alpha); dummy.scale.setScalar(b.r); dummy.updateMatrix();
+    bulMesh.setMatrixAt(i, dummy.matrix); bulMesh.setColorAt(i, colOf(b.col));
+    dummy.scale.setScalar(b.r * 1.25); dummy.updateMatrix(); bulOut.setMatrixAt(i, dummy.matrix);
+  }
+  bulMesh.count = bulOut.count = nb; bulMesh.instanceMatrix.needsUpdate = bulOut.instanceMatrix.needsUpdate = true;
+  if (bulMesh.instanceColor) bulMesh.instanceColor.needsUpdate = true;
+
+  // partículas
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i]; p.life -= dt; if (p.life <= 0) { particles[i] = particles[particles.length - 1]; particles.pop(); continue; }
+    p.x += p.vx * dt; p.z += p.vz * dt; p.y += p.vy * dt; p.vy -= 700 * dt; if (p.y < 2) { p.y = 2; p.vy *= -.3; } p.vx *= 1 - 2 * dt; p.vz *= 1 - 2 * dt;
+  }
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i]; dummy.position.set(p.x, p.y, p.z); dummy.scale.setScalar(p.s * Math.min(1, p.life * 2.5)); dummy.rotation.set(p.life * 6, p.life * 4, 0); dummy.updateMatrix();
+    pMesh.setMatrixAt(i, dummy.matrix); pMesh.setColorAt(i, p.c);
+  }
+  dummy.rotation.set(0, 0, 0);
+  pMesh.count = particles.length; pMesh.instanceMatrix.needsUpdate = true; if (pMesh.instanceColor) pMesh.instanceColor.needsUpdate = true;
+
+  renderer.render(scene, camera);
+
+  // capa 2D
+  ov.setTransform(DPR, 0, 0, DPR, 0, 0); ov.clearRect(0, 0, W, H);
+  ov.textAlign = 'center'; ov.lineJoin = 'round';
+  for (const s of sim.shapes) if (s.hp < s.max) {
+    const p = toScreen(s.x, 28, s.y); if (!p) continue; const w = 34, k = clamp(s.hp / s.max, 0, 1);
+    ov.fillStyle = 'rgba(20,26,46,.7)'; ov.fillRect(p.x - w / 2 - 1, p.y - 8, w + 2, 6); ov.fillStyle = '#6fe08a'; ov.fillRect(p.x - w / 2, p.y - 7, w * k, 4);
+  }
+  for (const t of sim.tanks.values()) {
+    const x = t.px + (t.x - t.px) * alpha, z = t.py + (t.y - t.py) * alpha;
+    const top = toScreen(x, t.r * 1.5, z), low = toScreen(x, 0, z); if (!top || !low) continue;
+    const sc = clamp(Math.abs(low.y - top.y) / 38, .7, 1.5);
+    ov.font = '700 ' + Math.round(15 * sc) + 'px "Barlow Condensed", system-ui, sans-serif'; ov.lineWidth = 4; ov.strokeStyle = 'rgba(20,26,46,.8)';
+    ov.strokeText(t.name, top.x, top.y - 4); ov.fillStyle = '#fff'; ov.fillText(t.name, top.x, top.y - 4);
+    if (t.hp < t.maxHp) {
+      const w = clamp(t.r * 1.9 * (low.y - top.y) / (t.r * 1.5) * .7, 36, 120), k = clamp(t.hp / t.maxHp, 0, 1), y = low.y + 10 * sc;
+      ov.fillStyle = 'rgba(20,26,46,.75)'; ov.fillRect(low.x - w / 2 - 1.5, y - 1.5, w + 3, 8); ov.fillStyle = k > .5 ? '#6fe08a' : k > .25 ? '#ffc23d' : '#ff5d6c'; ov.fillRect(low.x - w / 2, y, w * k, 5);
+    }
+  }
+  for (const player of window.TanquexMultiplayer?.getPlayers() || []) {
+    const state = player.state || {}; if (player.active === false || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) continue;
+    const size = clamp(Number(state.size) || 25, 15, 120), top = toScreen(Number(state.x), size * 1.5, Number(state.y)); if (!top) continue;
+    const sc = clamp(size / 25, .7, 1.5); ov.font = '700 ' + Math.round(15 * sc) + 'px "Barlow Condensed", system-ui, sans-serif';
+    ov.lineWidth = 4; ov.strokeStyle = 'rgba(20,26,46,.8)'; ov.strokeText(player.name || state.name || 'Jugador', top.x, top.y - 4);
+    ov.fillStyle = multiplayerColor(player.id); ov.fillText(player.name || state.name || 'Jugador', top.x, top.y - 4);
+    const hp = Math.max(0, Number(state.hp) || 0), maxHp = Math.max(1, Number(state.maxHp) || 1), ratio = clamp(hp / maxHp, 0, 1), w = clamp(size * 1.5, 36, 100), y = top.y + 5;
+    ov.fillStyle = 'rgba(20,26,46,.75)'; ov.fillRect(top.x - w / 2 - 1, y - 1, w + 2, 7);
+    ov.fillStyle = ratio > .5 ? '#6fe08a' : ratio > .25 ? '#ffc23d' : '#ff5d6c'; ov.fillRect(top.x - w / 2, y, w * ratio, 5);
+  }
+  for (let i = floats.length - 1; i >= 0; i--) {
+    const f = floats[i]; f.t -= dt; if (f.t <= 0 || !me) { floats.splice(i, 1); continue; }
+    const p = toScreen(me.x, me.r * 2.4, me.y); if (!p) continue;
+    ov.globalAlpha = Math.min(1, f.t * 2); ov.font = '400 22px "Russo One", Impact, sans-serif'; ov.lineWidth = 5; ov.strokeStyle = '#141a2e';
+    const yy = p.y - (1 - f.t) * 46; ov.strokeText(f.txt, p.x + 36, yy); ov.fillStyle = '#ffc23d'; ov.fillText(f.txt, p.x + 36, yy); ov.globalAlpha = 1;
+  }
+  for (const k of ['mv', 'aim']) if (touch[k]) {
+    const j = touch[k], dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy) || 1, m = Math.min(d, 60);
+    ov.lineWidth = 3; ov.strokeStyle = 'rgba(20,26,46,.45)'; ov.beginPath(); ov.arc(j.ox, j.oy, 60, 0, 6.283); ov.stroke();
+    ov.fillStyle = 'rgba(20,26,46,.45)'; ov.beginPath(); ov.arc(j.ox + dx / d * m, j.oy + dy / d * m, 26, 0, 6.283); ov.fill();
+  }
+
+  if (mode === 'play' && me) { updateHUD(me); updateBoard(dt); if (frameN % 3 === 0) drawMini(); }
+  else if (mode === 'menu') { updateBoard(dt); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+<script src="/script.js" defer></script>
+</body></html>
